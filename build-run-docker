@@ -129,6 +129,11 @@ bundle install
 # Symlink for easy access
 ln -s /opt/metasploit-framework/msfconsole /usr/local/bin/msfconsole
 ln -s /opt/metasploit-framework/msfupdate /usr/local/bin/msfupdate
+ln -s /opt/metasploit-framework/msfvenom /usr/local/bin/msfvenom
+ln -s /opt/metasploit-framework/msfdb /usr/local/bin/msfdb
+ln -s /opt/metasploit-framework/msfrpc /usr/local/bin/msfrpc
+ln -s /opt/metasploit-framework/msfrpcd /usr/local/bin/msfrpcd
+ln -s /opt/metasploit-framework/msfd /usr/local/bin/msfd
 
 # Add msfupdate-if-due script to cron.daily (no cron install needed)
 mkdir -p /var/lib /var/log
