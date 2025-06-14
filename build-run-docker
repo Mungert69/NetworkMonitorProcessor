@@ -115,10 +115,10 @@ apt-get update && apt-get install -y \
   autoconf bison build-essential libssl-dev libyaml-dev \
   libreadline-dev zlib1g-dev libgmp-dev libpcap-dev \
   libsqlite3-dev libxml2-dev libxslt1-dev libtool \
-  libffi-dev git curl gnupg2 postgresql libpq-dev ruby ruby-dev liblzma-dev
+  libffi-dev git gnupg2 libpq-dev ruby ruby-dev liblzma-dev
 
 # Clone Metasploit Framework
-git clone https://github.com/rapid7/metasploit-framework /opt/metasploit-framework
+git clone --depth 1 https://github.com/rapid7/metasploit-framework /opt/metasploit-framework
 cd /opt/metasploit-framework
 
 # Install Ruby gems
