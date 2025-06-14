@@ -103,32 +103,16 @@ docker exec -it "$CONTAINER_NAME" bash -c "apt-get update && apt-get -y install 
     libxss-dev \
     libatspi2.0-0"
 
-# Step 9: Symlink for nmap, install Metasploit from GitHub, and add auto-update script
+# Step 9: Symlink for nmap, install Metasploit, and add auto-update script
 docker exec -it "$CONTAINER_NAME" bash -c '
 set -e
 
 # Create symlink
 cd /app/openssl/bin && ln -s /usr/bin/nmap nmap
 
-# Install dependencies for Metasploit from source
-apt-get update && apt-get install -y \
-  autoconf bison build-essential libssl-dev libyaml-dev \
-  libreadline-dev zlib1g-dev libgmp-dev libpcap-dev \
-  libsqlite3-dev libxml2-dev libxslt1-dev libtool \
-  libffi-dev git curl gnupg2 postgresql libpq-dev ruby ruby-dev liblzma-dev
-
-# Clone Metasploit Framework
-git clone https://github.com/rapid7/metasploit-framework /opt/metasploit-framework
-cd /opt/metasploit-framework
-
-# Install Ruby gems
-gem install bundler:2.5.11
-bundle config set --local without "development test"
-bundle install
-
-# Symlink for easy access
-ln -s /opt/metasploit-framework/msfconsole /usr/local/bin/msfconsole
-ln -s /opt/metasploit-framework/msfupdate /usr/local/bin/msfupdate
+# Install Metasploit
+curl -sSL https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > /app/msfinstall
+chmod 755 /app/msfinstall && /app/msfinstall
 
 # Add msfupdate-if-due script to cron.daily (no cron install needed)
 mkdir -p /var/lib /var/log
@@ -138,11 +122,12 @@ cat << "EOF" > /etc/cron.daily/msfupdate-if-due
 STAMP_FILE="/var/lib/msfupdate-last-run"
 NOW=$(date +%s)
 
+# Clean up gpg file to avoid interactive prompt
+rm -f /usr/share/keyrings/metasploit-framework.gpg
+
 if [ ! -f "$STAMP_FILE" ] || [ $((NOW - $(cat "$STAMP_FILE"))) -ge 864000 ]; then
-  echo "[$(date)] Running msfupdate (git pull)..." >> /var/log/msfupdate.log
-  cd /opt/metasploit-framework
-  git pull >> /var/log/msfupdate.log 2>&1
-  bundle install >> /var/log/msfupdate.log 2>&1
+  echo "[$(date)] Running msfupdate..." >> /var/log/msfupdate.log
+  /opt/metasploit-framework/bin/msfupdate >> /var/log/msfupdate.log 2>&1
   date +%s > "$STAMP_FILE"
 else
   echo "[$(date)] Skipping msfupdate, not due yet." >> /var/log/msfupdate.log

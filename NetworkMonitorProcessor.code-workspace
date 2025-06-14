@@ -4,7 +4,7 @@
 			"path": "."
 		},
 		{
-			"path": "../NetworkMonitor"
+			"path": "../NetworkMonitorLib"
 		}
 	],
 	"settings": {
