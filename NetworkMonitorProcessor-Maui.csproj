@@ -1,31 +1,31 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
+    <PropertyGroup>
 
-    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+        <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
 
-    <Nullable>enable</Nullable>
-      <DefineConstants>NetworkMonitorProcessor; WINDOWS</DefineConstants>
-  </PropertyGroup>
+        <Nullable>enable</Nullable>
+        <DefineConstants>NetworkMonitorProcessor; WINDOWS</DefineConstants>
+    </PropertyGroup>
 
-<PropertyGroup>
-  <DefaultItemExcludes>$(DefaultItemExcludes);openssl-3.3.1\**\*</DefaultItemExcludes>
-</PropertyGroup>
-
-
-  <ItemGroup>
-     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.13.0" />
-     <PackageReference Include="Microsoft.Extensions.Configuration.CommandLine" Version="9.0.4" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.4" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.4" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.4" />
-  </ItemGroup>
-
- 
+    <PropertyGroup>
+        <DefaultItemExcludes>$(DefaultItemExcludes);openssl-3.3.1\**\*</DefaultItemExcludes>
+    </PropertyGroup>
 
 
-  <ItemGroup>
-    <ProjectReference Include="..\NetworkMonitorLib\NetworkMonitor-Maui.csproj" />
-  </ItemGroup>
-   
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.CommandLine" Version="9.0.6" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.6" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.6" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.6" />
+    </ItemGroup>
+
+
+
+
+    <ItemGroup>
+        <ProjectReference Include="..\NetworkMonitorLib\NetworkMonitor-Maui.csproj" />
+    </ItemGroup>
+
 </Project>
