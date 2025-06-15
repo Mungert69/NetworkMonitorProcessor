@@ -22,7 +22,7 @@ if ! dotnet publish NetworkMonitorProcessor-debian12.csproj --os linux --arch x6
     echo "Failed to publish the Docker container. Exiting..."
     exit 1
 fi
-cp ~/code/NetworkMonitorProcessor/bin/Release/net9.0/linux-x64/NetworkMonitor.dll ~/code/NetworkMonitorProcessor/openssl-3.3.1/bin/dlls/
+cp ~/code/NetworkMonitorProcessor/bin/Release/net9.0/linux-x64/NetworkMonitor.dll ~/code/NetworkMonitorProcessor/openssl-3.4.2/bin/dlls/
 if ! dotnet publish NetworkMonitorProcessor-debian12.csproj --os linux --arch x64 /t:PublishContainer -c Release; then
     echo "Failed to publish the Docker container. Exiting..."
     exit 1
@@ -43,9 +43,6 @@ done
 # Step 5: Update and install all required packages for standard build  in one apt-get call
 docker exec -it "$CONTAINER_NAME" bash -c "apt-get update && apt-get -y install curl xvfb libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxrandr2 libxdamage1 libxkbcommon-x11-0 libgbm1 libasound2 libnss3 libgdk-pixbuf2.0-0 libpango1.0-0 libpangoft2-1.0-0 libpangocairo-1.0-0"
 
-# Step 6: Push both the standard bug version tag
-docker commit  "$CONTAINER_NAME" "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG"  # Commit to "tag"
-docker push "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG"  # Push the "tag" tag
 
 # Step 8: Update and install all required packages for full build.
 docker exec -it "$CONTAINER_NAME" bash -c "apt-get update && apt-get -y install gnupg \
@@ -109,28 +106,15 @@ docker exec -it "$CONTAINER_NAME" bash -c "apt-get update && apt-get -y install 
     libxss-dev \
     libatspi2.0-0"
 
-# Step 9: Create symlink for nmap and install Metasploit
-docker exec -it "$CONTAINER_NAME" bash -c "cd /app/openssl/bin && ln -s /usr/bin/nmap nmap"
-docker exec -it "$CONTAINER_NAME" bash -c "curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb > msfinstall && chmod 755 msfinstall && ./msfinstall"
-
-# Step 10: Commit full build as latest tag
-docker commit  "$CONTAINER_NAME" "$DOCKER_IMAGE_NAME:latest"  # Commit to "latest"
-docker push "$DOCKER_IMAGE_NAME:latest"  # Push the "latest" tag
 
 
-# Step 11: Install and configure systemd
+# Step 12: Install and configure systemd
 docker exec -it "$CONTAINER_NAME" bash -c "apt-get update && apt-get install -y systemd systemd-sysv"
 docker exec -it "$CONTAINER_NAME" bash -c "mkdir -p /sys/fs/cgroup && \
     echo 'ENV container docker' >> /etc/environment && \
     echo 'STOPSIGNAL SIGRTMIN+3' >> /etc/systemd/system.conf"
 docker exec -it "$CONTAINER_NAME" bash -c "systemctl daemon-reexec"
 
-
-# Use the new image in your Docker Compose file
-echo "Systemd has been configured and the updated image has been pushed."
-
-# Step 12: Confirm completion
-echo "Nmap and Meta Image has been pushed to Docker Hub as $DOCKER_IMAGE_FULL and $DOCKER_IMAGE_NAME:latest."
 # Step 13: Download and install OpenVAS
 docker exec -it "$CONTAINER_NAME" bash -c "wget https://raw.githubusercontent.com/Kastervo/OpenVAS-Installation/master/openvas_install.sh && chmod +x openvas_install.sh"
 docker exec -it "$CONTAINER_NAME" bash -c "./openvas_install.sh"
