@@ -45,6 +45,7 @@ docker push "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG"  # Push the "tag" tag
 # Step 8: Update and install all required packages for full build.
 docker exec -it "$CONTAINER_NAME" bash -c "apt-get update && apt-get -y install  gnupg \
     curl \
+    wget \
     nmap \
     postgresql \
     git-core \
@@ -107,15 +108,13 @@ docker exec -it "$CONTAINER_NAME" bash -c "apt-get update && apt-get -y install 
 docker exec -it "$CONTAINER_NAME" bash -c '
 set -e
 
-# Create symlink
-cd /app/openssl/bin && ln -s /usr/bin/nmap nmap
-
 # Install dependencies for Metasploit from source
 apt-get update && apt-get install -y \
   autoconf bison build-essential libssl-dev libyaml-dev \
   libreadline-dev zlib1g-dev libgmp-dev libpcap-dev \
   libsqlite3-dev libxml2-dev libxslt1-dev libtool \
   libffi-dev git gnupg2 libpq-dev ruby ruby-dev liblzma-dev
+
 
 # Clone Metasploit Framework
 git clone --depth 1 https://github.com/rapid7/metasploit-framework /opt/metasploit-framework
@@ -155,7 +154,25 @@ fi
 EOF
 chmod +x /etc/cron.daily/msfupdate-if-due
 '
+docker exec -it "$CONTAINER_NAME" bash -c '
+set -e
 
+# Download and install latest Nmap
+cd /tmp && \
+LATEST=$(wget -qO- https://nmap.org/dist/ | grep -oE "nmap-[0-9.]+\.tar\.bz2" | sort -V | tail -1) && \
+wget "https://nmap.org/dist/${LATEST}" && \
+VERSION=$(echo "$LATEST" | sed "s/\.tar\.bz2//") && \
+tar -xf "$LATEST" && \
+cd "$VERSION" && \
+./configure --without-zenmap && \
+make -j$(nproc) && \
+make install-nmap && \
+cd .. && \
+rm -rf "$VERSION" "$LATEST"
+
+# Verify installation
+nmap --version
+'
 
 # Step 10: Commit full build as latest tag
 docker commit  "$CONTAINER_NAME" "$DOCKER_IMAGE_NAME:latest"  # Commit to "latest"
