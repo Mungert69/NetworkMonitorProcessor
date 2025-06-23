@@ -166,12 +166,13 @@ tar -xf "$LATEST" && \
 cd "$VERSION" && \
 ./configure --without-zenmap && \
 make -j$(nproc) && \
-make install-nmap && \
+make install && \
 cd .. && \
 rm -rf "$VERSION" "$LATEST"
-
+ln -s /usr/local/bin/nmap nmap
 # Verify installation
 nmap --version
+/app/openssl/bin/nmap --version
 '
 
 # Step 10: Commit full build as latest tag
