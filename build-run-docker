@@ -169,6 +169,7 @@ make -j$(nproc) && \
 make install && \
 cd .. && \
 rm -rf "$VERSION" "$LATEST"
+cd /app/openssl/bin
 ln -s /usr/local/bin/nmap nmap
 # Verify installation
 nmap --version
