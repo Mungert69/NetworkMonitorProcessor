@@ -156,19 +156,27 @@ chmod +x /etc/cron.daily/msfupdate-if-due
 '
 docker exec -it "$CONTAINER_NAME" bash -c '
 set -e
+# Step: Download and install Nmap 7.96 (fixed version)
 
-# Download and install latest Nmap
-cd /tmp && \
-LATEST=$(wget -qO- https://nmap.org/dist/ | grep -oE "nmap-[0-9.]+\.tar\.bz2" | sort -V | tail -1) && \
-wget "https://nmap.org/dist/${LATEST}" && \
-VERSION=$(echo "$LATEST" | sed "s/\.tar\.bz2//") && \
-tar -xf "$LATEST" && \
-cd "$VERSION" && \
-./configure --without-zenmap && \
-make -j$(nproc) && \
-make install && \
-cd .. && \
-rm -rf "$VERSION" "$LATEST"
+cd /tmp
+
+# Use fixed version 7.96
+VERSION="nmap-7.96"
+ARCHIVE="$VERSION.tar.bz2"
+
+wget "https://nmap.org/dist/${ARCHIVE}"
+wget "https://nmap.org/dist/sigs/${ARCHIVE}.asc"   # optional: for signature checking
+
+tar -xf "$ARCHIVE"
+cd "$VERSION"
+
+./configure --without-zenmap
+make -j$(nproc)
+make install
+
+cd ..
+rm -rf "$VERSION" "$ARCHIVE" "${ARCHIVE}.asc"
+
 cd /app/openssl/bin
 ln -s /usr/local/bin/nmap nmap
 # Verify installation
