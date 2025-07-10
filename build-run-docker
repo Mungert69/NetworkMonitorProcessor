@@ -179,6 +179,7 @@ cd ..
 rm -rf "$VERSION" "$ARCHIVE" "${ARCHIVE}.asc"
 
 cd /app/openssl/bin
+rm nmap
 ln -s /usr/local/bin/nmap nmap
 # Verify installation
 nmap --version
