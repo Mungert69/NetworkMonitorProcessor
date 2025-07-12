@@ -130,10 +130,12 @@ namespace NetworkMonitor.Processor
             else{
                 logger.LogError(resultRabbitRepo.Message);
                 return;
-            } 
-            _cmdProcessorProvider = new CmdProcessorProvider(loggerFactory, rabbitRepo, netConfig);
+            }
+            ILaunchHelper launchHelper = new LaunchHelper();
+            _cmdProcessorProvider = new CmdProcessorProvider(loggerFactory, rabbitRepo, netConfig,launchHelper);
             var resultCmdProcessorProvider=await _cmdProcessorProvider.Setup();
-            _connectFactory = new NetworkMonitor.Connection.ConnectFactory(loggerFactory.CreateLogger<ConnectFactory>(), netConfig: netConfig, cmdProcessorProvider : _cmdProcessorProvider);
+
+            _connectFactory = new NetworkMonitor.Connection.ConnectFactory(loggerFactory.CreateLogger<ConnectFactory>(), netConfig: netConfig, cmdProcessorProvider : _cmdProcessorProvider, launchHelper: launchHelper);
            _ = _connectFactory.SetupChromium(netConfig);
             //ISystemParamsHelper systemParamsHelper = new SystemParamsHelper(config, loggerFactory.CreateLogger<SystemParamsHelper>());
             // _connectFactory = new NetworkMonitor.Connection.ConnectFactory(loggerFactory.CreateLogger<ConnectFactory>(), oqsProviderPath: netConfig.OqsProviderPath);
