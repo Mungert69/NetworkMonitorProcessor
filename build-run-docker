@@ -160,12 +160,12 @@ chmod +x /etc/cron.daily/msfupdate-if-due
 '
 docker exec -it "$CONTAINER_NAME" bash -c '
 set -e
-# Step: Download and install Nmap 7.96 (fixed version)
+# Step: Download and install Nmap 7.97 
+apt install -y lua5.4 liblua5.4-dev
 
 cd /tmp
 
-# Use fixed version 7.96
-VERSION="nmap-7.96"
+VERSION="nmap-7.97"
 ARCHIVE="$VERSION.tar.bz2"
 
 wget "https://nmap.org/dist/${ARCHIVE}"
@@ -184,7 +184,7 @@ rm -rf "$VERSION" "$ARCHIVE" "${ARCHIVE}.asc"
 cd /app/openssl/bin
 # rm nmap
 #we are using old nmap for now
-# ln -s /usr/local/bin/nmap nmap
+ln -s /usr/local/bin/nmap nmap
 # Verify installation
 nmap --version
 /app/openssl/bin/nmap --version
