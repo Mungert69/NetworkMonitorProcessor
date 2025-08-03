@@ -160,12 +160,28 @@ chmod +x /etc/cron.daily/msfupdate-if-due
 '
 docker exec -it "$CONTAINER_NAME" bash -c '
 set -e
-# Step: Download and install Nmap 7.97 
-apt install -y lua5.4 liblua5.4-dev
+# Step: Download and install Nmap 7.92 
+apt install -y lua5.4 liblua5.4-dev flex bison
+wget https://www.tcpdump.org/release/libpcap-1.10.5.tar.gz
+tar xzf libpcap-1.10.5.tar.gz
+cd libpcap-1.10.5/
+./configure --prefix=/usr/local --disable-remote
+make -j$(nproc) 
+make install
+ldconfig
+cd /tmp
+wget https://github.com/libssh2/libssh2/releases/download/libssh2-1.10.0/libssh2-1.10.0.tar.gz
+tar xzf libssh2-1.10.0.tar.gz
+cd libssh2-1.10.0
+./configure --prefix=/usr/local
+make -j$(nproc)
+make install
+# Ensure /usr/local/lib is in ldconfig:
+ldconfig
 
 cd /tmp
 
-VERSION="nmap-7.97"
+VERSION="nmap-7.92"
 ARCHIVE="$VERSION.tar.bz2"
 
 wget "https://nmap.org/dist/${ARCHIVE}"
@@ -174,7 +190,11 @@ wget "https://nmap.org/dist/sigs/${ARCHIVE}.asc"   # optional: for signature che
 tar -xf "$ARCHIVE"
 cd "$VERSION"
 
-./configure --without-zenmap
+#  Apply PCAP_SOCKET patch
+sed -i "1i\\
+#ifdef PCAP_SOCKET\\n#undef PCAP_SOCKET\\n#endif" nse_nsock.cc
+
+./configure --without-zenmap --with-liblua=/usr/include/lua5.4  --with-libssh2=/usr/local --with-libpcap=/usr/local
 make -j$(nproc)
 make install
 
@@ -182,8 +202,8 @@ cd ..
 rm -rf "$VERSION" "$ARCHIVE" "${ARCHIVE}.asc"
 
 cd /app/openssl/bin
-# rm nmap
-#we are using old nmap for now
+rm nmap
+#we are using older nmap for now
 ln -s /usr/local/bin/nmap nmap
 # Verify installation
 nmap --version
