@@ -162,9 +162,9 @@ docker exec -it "$CONTAINER_NAME" bash -c '
 set -e
 # Step: Download and install Nmap 7.92 
 apt install -y lua5.4 liblua5.4-dev flex bison
-wget https://www.tcpdump.org/release/libpcap-1.10.5.tar.gz
-tar xzf libpcap-1.10.5.tar.gz
-cd libpcap-1.10.5/
+wget https://www.tcpdump.org/release/libpcap-1.10.3.tar.gz
+tar xzf libpcap-1.10.3.tar.gz
+cd libpcap-1.10.3/
 ./configure --prefix=/usr/local --disable-remote
 make -j$(nproc) 
 make install
@@ -190,9 +190,6 @@ wget "https://nmap.org/dist/sigs/${ARCHIVE}.asc"   # optional: for signature che
 tar -xf "$ARCHIVE"
 cd "$VERSION"
 
-#  Apply PCAP_SOCKET patch
-sed -i "1i\\
-#ifdef PCAP_SOCKET\\n#undef PCAP_SOCKET\\n#endif" nse_nsock.cc
 
 ./configure --without-zenmap --with-liblua=/usr/include/lua5.4  --with-libssh2=/usr/local --with-libpcap=/usr/local
 make -j$(nproc)
