@@ -123,6 +123,7 @@ namespace NetworkMonitor.Processor.Services
                     mergeMonitorPingInfo.RoundTripTimeAverage = mergeMonitorPingInfo.RoundTripTimeTotal / (float)mergeMonitorPingInfo.PacketsRecieved;
                     mergeMonitorPingInfo.MonitorStatus.ResetDownCount();
                     mergeMonitorPingInfo.IsDirtyDownCount = false;
+
                 }
                 else
                 {
@@ -142,6 +143,7 @@ namespace NetworkMonitor.Processor.Services
                 mergeMonitorPingInfo.MonitorStatus.EventTime = mpiConnect.EventTime;
                 mergeMonitorPingInfo.MonitorStatus.Message = mpiConnect.Message;
                 mergeMonitorPingInfo.Status = mpiConnect.Message;
+                mergeMonitorPingInfo.SiteHash=mpiConnect.SiteHash;
             }
         }
 

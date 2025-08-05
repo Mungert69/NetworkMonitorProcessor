@@ -906,6 +906,11 @@ namespace NetworkMonitor.Processor.Services
                 }
                 else
                 {
+                    // special case for sitehash set it to null so it can be recalculated on next run. not ideal to hard code todo find a better way
+                    if (updateMonitorPingInfo.EndPointType == "sitehash")
+                    {
+                        updateMonitorPingInfo.SiteHash = null;
+                    }
                     updateMonitorPingInfo.MonitorStatus.AlertFlag = false;
                     updateMonitorPingInfo.MonitorStatus.AlertSent = false;
                     updateMonitorPingInfo.IsDirtyDownCount = true;

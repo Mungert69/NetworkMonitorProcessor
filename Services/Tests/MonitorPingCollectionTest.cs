@@ -73,7 +73,8 @@ public class MonitorPingCollectionTest
             IsUp = true,
             PingInfo = new PingInfo { ID = 99, MonitorPingInfoID = 1, RoundTripTime = 123 },
             EventTime = DateTime.UtcNow,
-            Message = "OK"
+            Message = "OK",
+            SiteHash = "sitehash-abc"
         };
 
         collection.Merge(mpiConnect, 1);
@@ -87,6 +88,7 @@ public class MonitorPingCollectionTest
         Assert.Equal(123, monitorPingInfo.RoundTripTimeTotal);
         Assert.Equal("OK", monitorPingInfo.Status);
         Assert.True(collection.PingInfos.ContainsKey(99));
+        Assert.Equal("sitehash-abc", monitorPingInfo.SiteHash); // New assertion for SiteHash
     }
 
     [Fact]
