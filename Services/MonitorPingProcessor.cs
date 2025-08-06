@@ -909,6 +909,7 @@ namespace NetworkMonitor.Processor.Services
                     // special case for sitehash set it to null so it can be recalculated on next run. not ideal to hard code todo find a better way
                     if (updateMonitorPingInfo.EndPointType == "sitehash")
                     {
+                        _netConnectCollection.ResetSiteHash(updateMonitorPingInfo.MonitorIPID);
                         updateMonitorPingInfo.SiteHash = null;
                     }
                     updateMonitorPingInfo.MonitorStatus.AlertFlag = false;

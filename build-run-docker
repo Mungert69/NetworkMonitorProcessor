@@ -39,15 +39,88 @@ until docker exec -it "$CONTAINER_NAME" bash -c "ls /app" >/dev/null 2>&1; do
 done
 
 # Step 5: Update and install all required packages for standard build  in one apt-get call
-docker exec -it "$CONTAINER_NAME" bash -c "apt-get update && apt-get -y install  nmap curl xvfb libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxrandr2 libxdamage1 libxkbcommon-x11-0 libgbm1 libasound2 libnss3 libgdk-pixbuf2.0-0 libpango1.0-0 libpangoft2-1.0-0 libpangocairo-1.0-0
-ln -s /usr/bin/nmap /app/openssl/bin/nmap
+docker exec -it "$CONTAINER_NAME" bash -c "apt-get update && apt-get upgrade && apt-get -y install curl xvfb libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxrandr2 libxdamage1 libxkbcommon-x11-0 libgbm1 libasound2 libnss3 libgdk-pixbuf2.0-0 libpango1.0-0 libpangoft2-1.0-0 libpangocairo-1.0-0
 "
 
-# Step 6: Push both the standard bug version tag
+# Step 6: Build nmap 7.92 . using older version most recent 
+docker exec -it "$CONTAINER_NAME" bash -c '
+set -e
+
+apt update && apt install -y \
+  build-essential \
+  wget curl gnupg \
+  liblua5.3-dev lua5.3 \
+  libpcre3-dev \
+  libssh2-1-dev \
+  libpcap-dev \
+  zlib1g-dev \
+  libssl-dev \
+  flex bison
+
+# 📁 Download and extract Nmap source
+cd /tmp
+VERSION="nmap-7.92"
+ARCHIVE="$VERSION.tar.bz2"
+
+wget "https://nmap.org/dist/${ARCHIVE}"
+wget "https://nmap.org/dist/sigs/${ARCHIVE}.asc" || true  # Optional signature check
+
+tar -xf "$ARCHIVE"
+cd "$VERSION"
+
+# 🔧 Configure with only system libraries
+./configure \
+  --without-zenmap \
+  --with-liblua=/usr/include/lua5.3 \
+  --with-libpcre=/usr \
+  --with-libssh2=/usr \
+  --with-libpcap=/usr \
+  --with-openssl=/usr
+
+# 🛠 Build and install
+make -j$(nproc)
+make install
+
+# 🧼 Clean up
+cd /
+rm -rf "/tmp/$VERSION" "/tmp/$ARCHIVE" "/tmp/${ARCHIVE}.asc" || true
+
+# 🧪 Verify
+echo "✅ Build complete. Nmap version:"
+mkdir -p /app/openssl/bin
+ln -s /usr/local/bin/nmap /app/openssl/bin/nmap
+# Verify installation
+nmap --version
+/app/openssl/bin/nmap --version
+'
+# Step 7: Clean up unnecessary build tools and libraries
+docker exec -it "$CONTAINER_NAME" bash -c '
+set -e
+
+echo "🧹 Cleaning up build tools and dev packages..."
+
+# Remove build-time packages
+apt purge -y \
+  build-essential 
+
+# Autoremove any unneeded dependencies
+apt autoremove -y
+
+# Clean APT cache
+rm -rf /var/lib/apt/lists/*
+
+# Remove any temp build files or unnecessary leftovers
+rm -rf /tmp/nmap-* /tmp/nmap-*.tar.bz2 /root/.cache /root/.npm || true
+
+echo "✅ Clean-up complete. Final disk usage:"
+du -sh /usr/local/bin/nmap
+'
+
+# Step 8: Push both the standard bug version tag
 docker commit  "$CONTAINER_NAME" "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG"  # Commit to "tag"
 docker push "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG"  # Push the "tag" tag
 
-# Step 8: Update and install all required packages for full build.
+# Step 9: Update and install all required packages for full build.
 docker exec -it "$CONTAINER_NAME" bash -c "apt-get update && apt-get -y install  gnupg \
     curl \
     wget \
@@ -108,7 +181,7 @@ docker exec -it "$CONTAINER_NAME" bash -c "apt-get update && apt-get -y install 
     libxss-dev \
     libatspi2.0-0"
 
-# Step 9: Symlink for nmap, install Metasploit from GitHub, and add auto-update script
+# Step 9: Install Metasploit from GitHub, and add auto-update script
 docker exec -it "$CONTAINER_NAME" bash -c '
 set -e
 
@@ -119,7 +192,7 @@ apt-get update && apt-get install -y \
   libsqlite3-dev libxml2-dev libxslt1-dev libtool \
   libffi-dev git gnupg2 libpq-dev ruby ruby-dev liblzma-dev
 
-
+#
 # Clone Metasploit Framework
 git clone --depth 1 https://github.com/rapid7/metasploit-framework /opt/metasploit-framework
 cd /opt/metasploit-framework
@@ -158,63 +231,39 @@ fi
 EOF
 chmod +x /etc/cron.daily/msfupdate-if-due
 '
+# Step 10: Final cleanup before image commit
 docker exec -it "$CONTAINER_NAME" bash -c '
 set -e
-# Step: Download and install Nmap 7.92 
-apt install -y lua5.4 liblua5.4-dev flex bison
-wget https://www.tcpdump.org/release/libpcap-1.10.3.tar.gz
-tar xzf libpcap-1.10.3.tar.gz
-cd libpcap-1.10.3/
-./configure --prefix=/usr/local --disable-remote
-make -j$(nproc) 
-make install
-ldconfig
-cd /tmp
-wget https://github.com/libssh2/libssh2/releases/download/libssh2-1.10.0/libssh2-1.10.0.tar.gz
-tar xzf libssh2-1.10.0.tar.gz
-cd libssh2-1.10.0
-./configure --prefix=/usr/local
-make -j$(nproc)
-make install
-# Ensure /usr/local/lib is in ldconfig:
-ldconfig
 
-cd /tmp
+echo "🧹 Final cleanup before image commit..."
 
-VERSION="nmap-7.92"
-ARCHIVE="$VERSION.tar.bz2"
+# Purge all development headers and tools
+apt purge -y  "build-essential" "bison" "autoconf" "flex"
 
-wget "https://nmap.org/dist/${ARCHIVE}"
-wget "https://nmap.org/dist/sigs/${ARCHIVE}.asc"   # optional: for signature checking
+# Autoremove unneeded deps
+apt autoremove -y
 
-tar -xf "$ARCHIVE"
-cd "$VERSION"
+# Remove APT cache and orphaned packages
+apt clean
+rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.cache /root/.npm
 
+# Remove Gem docs, man pages, and info pages
+rm -rf /opt/metasploit-framework/doc /usr/share/doc /usr/share/man /usr/share/info
 
-./configure --without-zenmap --with-liblua=/usr/include/lua5.4  --with-libssh2=/usr/local --with-libpcap=/usr/local
-make -j$(nproc)
-make install
+# Zero out logs
+truncate -s 0 /var/log/msfupdate.log || true
 
-cd ..
-rm -rf "$VERSION" "$ARCHIVE" "${ARCHIVE}.asc"
-
-cd /app/openssl/bin
-rm nmap
-#we are using older nmap for now
-ln -s /usr/local/bin/nmap nmap
-# Verify installation
-nmap --version
-/app/openssl/bin/nmap --version
+echo "✅ Library and system cleanup complete."
 '
 
-# Step 10: Commit full build as latest tag
+# Step 12: Commit full build as latest tag
 docker commit  "$CONTAINER_NAME" "$DOCKER_IMAGE_NAME:latest"  # Commit to "latest"
 docker push "$DOCKER_IMAGE_NAME:latest"  # Push the "latest" tag
 
-# Step 11: Confirm completion
+# Step 13: Confirm completion
 echo "The container is running, and the extra commands have been executed. Image has been pushed to Docker Hub as $DOCKER_IMAGE_FULL and $DOCKER_IMAGE_NAME:latest."
 
-# Step 12: Stop the container using Docker Compose
+# Step 14: Stop the container using Docker Compose
 if ! docker compose -f "$DOCKER_COMPOSE_FILE" down; then
     echo "Failed to stop the container using Docker Compose. Exiting..."
     exit 1
