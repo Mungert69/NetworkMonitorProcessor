@@ -67,7 +67,7 @@ public class AuthServiceTest
     public async Task InitializeAsync_ReturnsError_IfNoClientId()
     {
         var authService = CreateAuthService(out var loggerMock, out var rabbitRepoMock, out var config);
-        config.ClientId = null;
+        config.ClientId = "";
 
         var result = await authService.InitializeAsync();
         Assert.False(result.Success);
@@ -88,7 +88,7 @@ public class AuthServiceTest
     public async Task SendAuthRequestAsync_ReturnsError_IfNoClientId()
     {
         var authService = CreateAuthService(out var loggerMock, out var rabbitRepoMock, out var config);
-        config.ClientId = null;
+        config.ClientId = "";
 
         var result = await authService.SendAuthRequestAsync();
         Assert.False(result.Success);

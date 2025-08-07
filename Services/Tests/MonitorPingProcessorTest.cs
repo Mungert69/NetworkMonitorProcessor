@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -13,6 +15,44 @@ using Xunit;
 
 public class MonitorPingProcessorTest
 {
+    // DummyConnectFactory and DummyNetConnect for test injection
+    private class DummyConnectFactory : IConnectFactory
+    {
+        public INetConnect GetNetConnectObj(MonitorPingInfo monitorPingInfo, PingParams pingParams) =>
+            new DummyNetConnect(monitorPingInfo);
+        public void UpdateNetConnectionInfo(INetConnect netConnect, MonitorPingInfo monitorPingInfo, PingParams? pingParams = null)
+        {
+            netConnect.IsEnabled = monitorPingInfo.Enabled;
+            if (netConnect.MpiStatic != null)
+            {
+                netConnect.MpiStatic.Enabled = monitorPingInfo.Enabled;
+                netConnect.MpiStatic.EndPointType = monitorPingInfo.EndPointType;
+            }
+        }
+    }
+    private class DummyNetConnect : INetConnect
+    {
+        public DummyNetConnect(MonitorPingInfo mpi)
+        {
+            MpiStatic = new MPIStatic { MonitorIPID = mpi.MonitorIPID, EndPointType = mpi.EndPointType, Enabled = mpi.Enabled };
+            IsEnabled = mpi.Enabled;
+            Cts = new CancellationTokenSource();
+            MpiConnect = new MPIConnect(); // Fix CS8618: ensure non-null
+        }
+        public ushort RoundTrip { get; set; }
+        public uint PiID { get; set; }
+        public bool IsLongRunning { get; set; }
+        public bool IsRunning { get; set; }
+        public bool IsQueued { get; set; }
+        public bool IsEnabled { get; set; }
+        public MPIConnect MpiConnect { get; set; }
+        public MPIStatic MpiStatic { get; set; }
+        public CancellationTokenSource Cts { get; set; }
+        public Task Connect() => Task.CompletedTask;
+        public void PostConnect() { }
+        public void PreConnect() { }
+    }
+
     private MonitorPingProcessor CreateProcessor(
         out Mock<ILogger> loggerMock,
         out Mock<IFileRepo> fileRepoMock,
@@ -23,15 +63,12 @@ public class MonitorPingProcessorTest
         fileRepoMock = new Mock<IFileRepo>();
         rabbitRepoMock = new Mock<IRabbitRepo>();
         config = new NetConnectConfig(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), "TestSection");
-        // If AppID and LocalSystemUrl are settable via methods or reflection, set them here.
-        // Otherwise, ensure your NetConnectConfig is constructed with the correct values for your test.
-        // For test purposes, you can use reflection to set private fields if needed:
         typeof(NetConnectConfig).GetField("_appID", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
             ?.SetValue(config, "test-app");
         typeof(NetConnectConfig).GetField("_localSystemUrl", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
             ?.SetValue(config, new SystemUrl { RabbitInstanceName = "test", RabbitHostName = "localhost", RabbitPort = 5672 });
         var processorStates = new LocalProcessorStates();
-        var connectFactory = new Mock<IConnectFactory>().Object;
+        var connectFactory = new DummyConnectFactory();
         return new MonitorPingProcessor(
             loggerMock.Object,
             config,
@@ -60,8 +97,8 @@ public class MonitorPingProcessorTest
                 LogLevel.Warning,
                 It.IsAny<EventId>(),
                 It.Is<It.IsAnyType>((v, t) => true), // Optionally check message here
-                It.IsAny<Exception>(),
-                It.IsAny<Func<It.IsAnyType, Exception, string>>()),
+                It.IsAny<Exception?>(),
+                It.IsAny<Func<It.IsAnyType, Exception?, string>>()),
             Times.AtLeastOnce());
         fileRepoMock.Verify(f => f.ShutdownAsync(), Times.Once());
         rabbitRepoMock.Verify(r => r.Shutdown(), Times.Once());
@@ -106,9 +143,11 @@ public class MonitorPingProcessorTest
     {
         var processor = CreateProcessor(out var loggerMock, out var fileRepoMock, out var rabbitRepoMock, out var config);
         // Simulate setup complete and not running
-        var states = typeof(MonitorPingProcessor)
-            .GetField("_processorStates", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-            .GetValue(processor) as LocalProcessorStates;
+        var statesField = typeof(MonitorPingProcessor)
+            .GetField("_processorStates", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        Assert.NotNull(statesField);
+        var states = statesField.GetValue(processor) as LocalProcessorStates;
+        Assert.NotNull(states);
         states.IsSetup = true;
         states.IsConnectRunning = false;
 
@@ -121,9 +160,11 @@ public class MonitorPingProcessorTest
     public async Task WakeUp_ReturnsWarningIfNotSetupOrRunning()
     {
         var processor = CreateProcessor(out var loggerMock, out var fileRepoMock, out var rabbitRepoMock, out var config);
-        var states = typeof(MonitorPingProcessor)
-            .GetField("_processorStates", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-            .GetValue(processor) as LocalProcessorStates;
+        var statesField = typeof(MonitorPingProcessor)
+            .GetField("_processorStates", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        Assert.NotNull(statesField);
+        var states = statesField.GetValue(processor) as LocalProcessorStates;
+        Assert.NotNull(states);
         states.IsSetup = false;
         states.IsConnectRunning = false;
 
@@ -136,5 +177,54 @@ public class MonitorPingProcessorTest
         result = await processor.WakeUp();
         Assert.False(result.Success);
         Assert.Contains("Warning", result.Message);
+    }
+
+    [Fact]
+    public async Task ResetAlerts_ForSiteHash_ResetsSiteHashInBothMonitorPingInfoAndNetConnect()
+    {
+        // Arrange
+        var processor = CreateProcessor(out var loggerMock, out var fileRepoMock, out var rabbitRepoMock, out var config);
+
+        // Create a MonitorPingInfo and add it to the processor using only public APIs
+        var monitorPingInfo = new MonitorPingInfo
+        {
+            MonitorIPID = 123,
+            EndPointType = "sitehash",
+            Enabled = true,
+            SiteHash = "originalhash",
+            AppID = processor.AppID // Ensure AppID matches processor for strict lookup
+        };
+
+        // Get the collections from the processor
+        var monitorPingCollectionField = processor.GetType()
+            .GetField("_monitorPingCollection", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        Assert.NotNull(monitorPingCollectionField);
+        var monitorPingCollection = monitorPingCollectionField.GetValue(processor) as MonitorPingCollection;
+        Assert.NotNull(monitorPingCollection);
+
+        var netConnectCollectionField = processor.GetType()
+            .GetField("_netConnectCollection", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        Assert.NotNull(netConnectCollectionField);
+        var netConnectCollection = netConnectCollectionField.GetValue(processor) as NetConnectCollection;
+        Assert.NotNull(netConnectCollection);
+
+        // Add to both collections
+        monitorPingCollection.MonitorPingInfos.TryAdd(monitorPingInfo.MonitorIPID, monitorPingInfo);
+        netConnectCollection.Add(monitorPingInfo);
+
+        // Set the SiteHash on both the MonitorPingInfo and the NetConnect in the collection
+        Assert.True(monitorPingCollection.MonitorPingInfos.ContainsKey(123));
+        monitorPingCollection.MonitorPingInfos[123].SiteHash = "originalhash";
+        var netConnect = netConnectCollection.GetFilteredNetConnects().FirstOrDefault(nc => nc.MpiStatic.MonitorIPID == 123);
+        Assert.NotNull(netConnect);
+        netConnect.MpiStatic.SiteHash = "originalhash";
+
+        // Act
+        var results = await processor.ResetAlerts(new List<int> { 123 });
+
+        // Assert
+        Assert.Null(monitorPingCollection.MonitorPingInfos[123].SiteHash);
+        Assert.Null(netConnect.MpiStatic.SiteHash);
+        Assert.Contains(results, r => r.Success && r.Message.Contains("updated MonitorPingInfo with MonitorIPID 123"));
     }
 }
