@@ -123,41 +123,47 @@ namespace NetworkMonitor.Processor
             }
             var processorStates = new LocalProcessorStates();
             IRabbitRepo rabbitRepo = new RabbitRepo(loggerFactory.CreateLogger<RabbitRepo>(), netConfig);
-            var resultRabbitRepo=await rabbitRepo.ConnectAndSetUp(); 
-            if (resultRabbitRepo.Success){
+            var resultRabbitRepo = await rabbitRepo.ConnectAndSetUp();
+            if (resultRabbitRepo.Success)
+            {
                 logger.LogInformation(resultRabbitRepo.Message);
             }
-            else{
+            else
+            {
                 logger.LogError(resultRabbitRepo.Message);
                 return;
             }
             ILaunchHelper launchHelper = new LaunchHelper();
-            _cmdProcessorProvider = new CmdProcessorProvider(loggerFactory, rabbitRepo, netConfig,launchHelper);
-            var resultCmdProcessorProvider=await _cmdProcessorProvider.Setup();
+            _cmdProcessorProvider = new CmdProcessorProvider(loggerFactory, rabbitRepo, netConfig, launchHelper);
+            var resultCmdProcessorProvider = await _cmdProcessorProvider.Setup();
 
-            _connectFactory = new NetworkMonitor.Connection.ConnectFactory(loggerFactory.CreateLogger<ConnectFactory>(), netConfig: netConfig, cmdProcessorProvider : _cmdProcessorProvider, launchHelper: launchHelper);
-           _ = _connectFactory.SetupChromium(netConfig);
+            _connectFactory = new NetworkMonitor.Connection.ConnectFactory(loggerFactory.CreateLogger<ConnectFactory>(), netConfig: netConfig, cmdProcessorProvider: _cmdProcessorProvider, launchHelper: launchHelper);
+            _ = _connectFactory.SetupChromium(netConfig);
             //ISystemParamsHelper systemParamsHelper = new SystemParamsHelper(config, loggerFactory.CreateLogger<SystemParamsHelper>());
             // _connectFactory = new NetworkMonitor.Connection.ConnectFactory(loggerFactory.CreateLogger<ConnectFactory>(), oqsProviderPath: netConfig.OqsProviderPath);
             _monitorPingProcessor = new MonitorPingProcessor(loggerFactory.CreateLogger<MonitorPingProcessor>(), netConfig, _connectFactory, fileRepo, rabbitRepo, processorStates);
             IRabbitListener rabbitListener = new RabbitListener(_monitorPingProcessor, loggerFactory.CreateLogger<RabbitListener>(), netConfig, processorStates, _cmdProcessorProvider);
             AuthService authService;
             var resultListener = await rabbitListener.Setup();
-             if (resultListener.Success){
+            if (resultListener.Success)
+            {
                 logger.LogInformation(resultListener.Message);
             }
-            else{
+            else
+            {
                 logger.LogError(resultListener.Message);
                 return;
-            } 
+            }
             var result = await _monitorPingProcessor.Init(new ProcessorInitObj());
-             if (result.Success){
+            if (result.Success)
+            {
                 logger.LogInformation(result.Message);
             }
-            else{
+            else
+            {
                 logger.LogError(result.Message);
                 return;
-            } 
+            }
             processorStates.IsSetup = result.Success;
             if (config["AuthDevice"] == "true")
             {
@@ -169,12 +175,13 @@ namespace NetworkMonitor.Processor
 
 
             await Task.Delay(-1);
-
+#if !ANDROID
             Console.CancelKeyPress += async (o, e) =>
             {
                 Console.WriteLine("Exit");
                 await _monitorPingProcessor.OnStoppingAsync();
             };
+#endif
         }
     }
 
