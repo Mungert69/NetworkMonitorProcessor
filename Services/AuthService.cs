@@ -385,7 +385,10 @@ namespace NetworkMonitor.Processor.Services
                             result.Success = false;
                             return result;
                         }
-                        var newAppID = userInfo.UserID + "-" + machineName;
+                        string appNameStr = "";
+                        if (!string.IsNullOrEmpty(_netConfig.AppName)) appNameStr = _netConfig.AppName + "-";
+
+                        var newAppID = userInfo.UserID + "-" + appNameStr + machineName;
                         if (newAppID.Length > 255)
                             newAppID = newAppID.Substring(0, 255);
 
@@ -393,15 +396,14 @@ namespace NetworkMonitor.Processor.Services
 
 
                         var processorObj = new ProcessorObj();
-
-                        processorObj.Location = userInfo.Email + "-" + machineName;
+                        processorObj.Location = userInfo.Email + "-" + appNameStr+machineName;
                         processorObj.AppID = newAppID;
                         processorObj.Owner = userInfo.UserID;
                         processorObj.IsPrivate = true;
                         processorObj.DisabledEndPointTypes=_netConfig.DisabledEndpointTypes;
                         processorObj.DisabledCommands = _netConfig.DisabledCommands;
                         _netConfig.Owner = userInfo.UserID;
-                        _netConfig.MonitorLocation = userInfo.Email + "-" + machineName;
+                        _netConfig.MonitorLocation = userInfo.Email + "-" + appNameStr + machineName;
                         _netConfig.LocalSystemUrl.UseTls = true;
                         var resultConnect = await SetNewRabbitConnection(httpClient, userInfo.UserID);
                         // Update the AppID and LocalSystemUrl

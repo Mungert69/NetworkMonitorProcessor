@@ -219,6 +219,7 @@ namespace NetworkMonitor.Processor.Services
                 _netConfig.OqsProviderPath = _netConfig.OqsProviderPathReadOnly;
                 await _fileRepo.SaveStateJsonAsync<NetConnectConfig>("appsettings.json", _netConfig);
                 _netConfig.OqsProviderPath = copy;
+                await _netConfig.AuthComplete();
                 result.Message += " Success : Set AuthKey and saved NetConnectConfig to appsettings.json.";
             }
             catch (Exception e)
