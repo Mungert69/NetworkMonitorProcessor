@@ -43,60 +43,64 @@ docker exec -it "$CONTAINER_NAME" bash -c "apt-get update && apt-get upgrade && 
 "
 
 # Step 6: Build nmap 7.92 . using older version most recent 
-docker exec -it "$CONTAINER_NAME" bash -c '
-set -e
-
-apt update && apt install -y \
-  build-essential \
-  wget curl gnupg \
-  liblua5.3-dev lua5.3 \
-  libpcre3-dev \
-  libssh2-1-dev \
-  libpcap-dev \
-  zlib1g-dev \
-  libssl-dev \
-  flex bison
-
+#docker exec -it "$CONTAINER_NAME" bash -c '
+#set -e
+#
+#apt update && apt install -y \
+#  build-essential \
+#  wget curl gnupg \
+#  liblua5.3-dev lua5.3 \
+#  libpcre3-dev \
+#  libssh2-1-dev \
+#  libpcap-dev \
+#  zlib1g-dev \
+#  libssl-dev \
+#  flex bison
+#
 # 📁 Download and extract Nmap source
-cd /tmp
-VERSION="nmap-7.92"
-ARCHIVE="$VERSION.tar.bz2"
-
-wget "https://nmap.org/dist/${ARCHIVE}"
-wget "https://nmap.org/dist/sigs/${ARCHIVE}.asc" || true  # Optional signature check
-
-tar -xf "$ARCHIVE"
-cd "$VERSION"
-
+#cd /tmp
+#VERSION="nmap-7.92"
+#ARCHIVE="$VERSION.tar.bz2"
+#
+#wget "https://nmap.org/dist/${ARCHIVE}"
+#wget "https://nmap.org/dist/sigs/${ARCHIVE}.asc" || true  # Optional signature check
+#
+#tar -xf "$ARCHIVE"
+#cd "$VERSION"
+#
 # 🔧 Configure with only system libraries
-./configure \
-  --without-zenmap \
-  --with-liblua=/usr/include/lua5.3 \
-  --with-libpcre=/usr \
-  --with-libssh2=/usr \
-  --with-libpcap=/usr \
-  --with-openssl=/usr
-
+#./configure \
+#  --without-zenmap \
+#  --with-liblua=/usr/include/lua5.3 \
+#  --with-libpcre=/usr \
+#  --with-libssh2=/usr \
+#  --with-libpcap=/usr \
+#  --with-openssl=/usr
+#
 # 🛠 Build and install
-make -j$(nproc)
-make install
+#make -j$(nproc)
+#make install
 
 # 🧼 Clean up
-cd /
-rm -rf "/tmp/$VERSION" "/tmp/$ARCHIVE" "/tmp/${ARCHIVE}.asc" || true
-
+#cd /
+#rm -rf "/tmp/$VERSION" "/tmp/$ARCHIVE" "/tmp/${ARCHIVE}.asc" || true
+#
 # 🧪 Verify
-echo "✅ Build complete. Nmap version:"
-mkdir -p /app/openssl/bin
-ln -s /usr/local/bin/nmap /app/openssl/bin/nmap
+#echo "✅ Build complete. Nmap version:"
+#mkdir -p /app/openssl/bin
+#ln -s /usr/local/bin/nmap /app/openssl/bin/nmap
 # Verify installation
-nmap --version
-/app/openssl/bin/nmap --version
-'
+#nmap --version
+#/app/openssl/bin/nmap --version
+#'
+
 # Step 7: Clean up unnecessary build tools and libraries
 docker exec -it "$CONTAINER_NAME" bash -c '
 set -e
 
+apt install nmap
+ln -s /usr/bin/nmap nmap
+cp /usr/share/nmap/nse_main.lua /app/openssl/bin/nse_main.lua
 echo "🧹 Cleaning up build tools and dev packages..."
 
 # Remove build-time packages
