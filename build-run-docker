@@ -15,14 +15,17 @@ if ! dotnet test NetworkMonitorProcessor-debian12.csproj ; then
     echo "Test failed. Exiting..."
     exit 1
 fi
-# Step 2: Build and publish the Docker container
+
+# Step 2: Build and publish DLL
 if ! dotnet publish NetworkMonitorProcessor-debian12.csproj --os linux --arch x64 -c Release; then
-    echo "Failed to publish the Docker container. Exiting..."
+    echo "Failed to publish DLL. Exiting..."
     exit 1
 fi
 cp ~/code/NetworkMonitorProcessor/bin/Release/net9.0/linux-x64/NetworkMonitor.dll ~/code/NetworkMonitorProcessor/openssl/bin/dlls/
-if ! dotnet publish NetworkMonitorProcessor-debian12.csproj --os linux --arch x64 /t:PublishContainer -c Release; then
-    echo "Failed to publish the Docker container. Exiting..."
+
+# Step 2b: Build custom Debian 13 container
+if ! docker build -f Dockerfile.debian13 -t "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG" .; then
+    echo "Failed to build the Docker image with Debian 13. Exiting..."
     exit 1
 fi
 
