@@ -100,7 +100,7 @@ apt-get update && apt-get upgrade && apt-get -y install curl xvfb libatk1.0-0 li
 docker exec -it "$CONTAINER_NAME" bash -c '
 set -e
 
-apt install nmap
+apt -y install nmap
 mkdir -p /app/openssl/bin/scripts
 mkdir -p /app/openssl/bin/nselib
 ln -s /usr/bin/nmap /app/openssl/bin/nmap
@@ -133,7 +133,7 @@ docker push "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG"  # Push the "tag" tag
 # Step 9: Update and install all required packages for full build.
 docker exec -it "$CONTAINER_NAME" bash -c "
 set -e
-apt-get update && apt-get -y install  gnupg \
+apt-get -y update && apt-get -y install  gnupg \
     curl \
     wget \
     postgresql \
@@ -198,7 +198,7 @@ docker exec -it "$CONTAINER_NAME" bash -c '
 set -e
 
 # Install dependencies for Metasploit from source
-apt-get update && apt-get install -y \
+apt-get -y update && apt-get install -y \
   autoconf bison build-essential libssl-dev libyaml-dev \
   libreadline-dev zlib1g-dev libgmp-dev libpcap-dev \
   libsqlite3-dev libxml2-dev libxslt1-dev libtool \
