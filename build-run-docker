@@ -1,51 +1,73 @@
 #!/bin/sh
-cp appsettings-live.json appsettings.json
-# Define variables for reusability
-SECRET_FILE="../secret"
-REPO_URL="https://mungert69:`cat $SECRET_FILE`@github.com/Mungert69/NetworkMonitorProcessor"
+set -euo pipefail
+
+# --- config ---
+PROJECT="NetworkMonitorProcessor-debian12.csproj"
+DOCKERFILE="Dockerfile.trixie"
 DOCKER_COMPOSE_FILE="$HOME/code/NetworkMonitor/docker-compose-run-processor.yml"
 CONTAINER_NAME="processor"
 
-# Extract the image name from the docker-compose file (without the tag)
-DOCKER_IMAGE_FULL=$(grep 'image:' $DOCKER_COMPOSE_FILE | awk '{ print $2 }')
-DOCKER_IMAGE_NAME=$(echo $DOCKER_IMAGE_FULL | cut -d':' -f1)  # Extracts only the name, without the tag
-DOCKER_IMAGE_TAG=$(echo $DOCKER_IMAGE_FULL | cut -d':' -f2)  # Extracts only the tag, without the name
+# --- cleanup BEFORE tests (prevents duplicate types from stale publish) ---
+[ -d "./publish" ] && rm -rf ./publish
+find ./openssl/bin -type f -name '*.cs' -delete 2>/dev/null || true
+
+# optional secrets/appsettings
+SECRET_FILE="../secret"
+[ -f "appsettings-live.json" ] && cp appsettings-live.json appsettings.json || echo "⚠ appsettings-live.json not found (skipping copy)."
+[ -f "$SECRET_FILE" ] || echo "⚠ $SECRET_FILE not found (continuing without REPO_URL)."
+
+# image name/tag from compose
+DOCKER_IMAGE_FULL=$(grep -m1 'image:' "$DOCKER_COMPOSE_FILE" | awk '{ print $2 }')
+DOCKER_IMAGE_NAME=$(echo "$DOCKER_IMAGE_FULL" | cut -d':' -f1)
+DOCKER_IMAGE_TAG=$(echo "$DOCKER_IMAGE_FULL" | cut -d':' -f2)
 echo "Docker Image Full is $DOCKER_IMAGE_FULL . Name is $DOCKER_IMAGE_NAME ."
-if ! dotnet test NetworkMonitorProcessor-debian12.csproj ; then
-    echo "Test failed. Exiting..."
-    exit 1
-fi
 
-# Step 2: Build and publish DLL
-if ! dotnet publish NetworkMonitorProcessor-debian12.csproj --os linux --arch x64 -c Release; then
-    echo "Failed to publish DLL. Exiting..."
-    exit 1
-fi
-cp ~/code/NetworkMonitorProcessor/bin/Release/net9.0/linux-x64/NetworkMonitor.dll ~/code/NetworkMonitorProcessor/openssl/bin/dlls/
+# --- tests ---
+dotnet test "$PROJECT"
 
-# Step 2b: Build custom Debian 13 container
-if ! docker build -f Dockerfile.debian13 -t "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG" .; then
-    echo "Failed to build the Docker image with Debian 13. Exiting..."
-    exit 1
-fi
+# --- publish on host (outside project tree) ---
+ARTIFACTS_DIR="../_artifacts/processor"
+PUBLISH_DIR="$ARTIFACTS_DIR/publish"
+rm -rf "$PUBLISH_DIR"
+mkdir -p "$PUBLISH_DIR"
+dotnet publish "$PROJECT" -c Release -o "$PUBLISH_DIR" --os linux --arch x64
 
-# Step 3: Start the container using Docker Compose
-if ! docker compose -f "$DOCKER_COMPOSE_FILE" up -d; then
-    echo "Failed to start the container using Docker Compose. Exiting..."
-    exit 1
-fi
+# --- stage into docker build context (so COPY is allowed) ---
+STAGING_DIR="./docker-context/publish"
+rm -rf "./docker-context"
+mkdir -p "$STAGING_DIR"
+cp -a "$PUBLISH_DIR/." "$STAGING_DIR/"
 
-# Step 4: Wait for the container to be ready (use a loop instead of sleep)
+# --- build docker image (Debian 13 runtime + .NET runtime from Debian 12 repo) ---
+docker build -f "$DOCKERFILE" -t "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG" .
+
+# --- run via compose ---
+docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+
 echo "Waiting for the container to be ready..."
 until docker exec -it "$CONTAINER_NAME" bash -c "ls /app" >/dev/null 2>&1; do
-    sleep 2
+  sleep 2
 done
-
-# Step 5: Update and install all required packages for standard build  in one apt-get call
 docker exec -it "$CONTAINER_NAME" bash -c "
 set -e
-apt-get -y update && apt-get -y upgrade && apt-get -y install curl xvfb libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxrandr2 libxdamage1 libxkbcommon-x11-0 libgbm1 libasound2 libnss3 libgdk-pixbuf2.0-0 libpango1.0-0 libpangoft2-1.0-0 libpangocairo-1.0-0
+apt-get -y update && apt-get -y upgrade && apt-get -y install \
+  curl xvfb \
+  libatk1.0-0 \
+  libatk-bridge2.0-0 \
+  libcups2 \
+  libxcomposite1 \
+  libxrandr2 \
+  libxdamage1 \
+  libxkbcommon-x11-0 \
+  libgbm1 \
+  libasound2 \
+  libnss3 \
+  libgdk-pixbuf-2.0-0 \
+  libpango-1.0-0 \
+  libpangoft2-1.0-0 \
+  libpangocairo-1.0-0
 "
+
 
 # Step 6: Build nmap 7.92 . using older version most recent 
 #docker exec -it "$CONTAINER_NAME" bash -c '
@@ -99,102 +121,112 @@ apt-get -y update && apt-get -y upgrade && apt-get -y install curl xvfb libatk1.
 #/app/openssl/bin/nmap --version
 #'
 
-# Step 7: Clean up unnecessary build tools and libraries
+# Step 7: Nmap + layout + cleanup (TRIXIE-SAFE)
 docker exec -it "$CONTAINER_NAME" bash -c '
 set -e
 
-apt -y install nmap
+apt-get update -y
+apt-get install -y --no-install-recommends nmap
+
+# Ensure expected paths for your app
 mkdir -p /app/openssl/bin/scripts
 mkdir -p /app/openssl/bin/nselib
-ln -s /usr/bin/nmap /app/openssl/bin/nmap
-cp /usr/share/nmap/nse_main.lua /app/openssl/bin/nse_main.lua
-cp -r /usr/share/nmap/scripts/* /app/openssl/bin/scripts/
-cp -r /usr/share/nmap/nselib/* /app/openssl/bin/nselib/
+
+# Symlink the system nmap into your app tree
+ln -sf /usr/bin/nmap /app/openssl/bin/nmap
+
+# Copy NSE assets
+cp -f /usr/share/nmap/nse_main.lua /app/openssl/bin/nse_main.lua
+cp -rf /usr/share/nmap/scripts/* /app/openssl/bin/scripts/
+cp -rf /usr/share/nmap/nselib/* /app/openssl/bin/nselib/
+
 echo "🧹 Cleaning up build tools and dev packages..."
+# (May not be installed; don’t fail if they aren’t)
+apt-get purge -y build-essential || true
+apt-get autoremove -y
+rm -rf /var/lib/apt/lists/* /root/.cache /root/.npm /tmp/nmap-* /tmp/nmap-*.tar.bz2 || true
 
-# Remove build-time packages
-apt purge -y \
-  build-essential 
-
-# Autoremove any unneeded dependencies
-apt autoremove -y
-
-# Clean APT cache
-rm -rf /var/lib/apt/lists/*
-
-# Remove any temp build files or unnecessary leftovers
-rm -rf /tmp/nmap-* /tmp/nmap-*.tar.bz2 /root/.cache /root/.npm || true
-
-echo "✅ Clean-up complete. Final disk usage:"
-du -sh /usr/local/bin/nmap
+echo "✅ Clean-up complete. Final nmap info:"
+if command -v nmap >/dev/null 2>&1; then
+  nmap --version || true
+  echo "nmap path: $(command -v nmap)"
+  # Don’t fail if du can’t read
+  du -sh "$(command -v nmap)" 2>/dev/null || true
+else
+  echo "nmap not found on PATH"
+fi
 '
 
 # Step 8: Push both the standard bug version tag
 docker commit  "$CONTAINER_NAME" "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG"  # Commit to "tag"
 docker push "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG"  # Push the "tag" tag
 
-# Step 9: Update and install all required packages for full build.
-docker exec -it "$CONTAINER_NAME" bash -c "
+docker exec -e DEBIAN_FRONTEND=noninteractive -it "$CONTAINER_NAME" bash -c '
 set -e
-apt-get -y update && apt-get -y install  gnupg \
-    curl \
-    wget \
-    postgresql \
-    git-core \
-    libpq-dev \
-    libreadline-dev \
-    libssl-dev \
-    zlib1g-dev \
-    build-essential \
-    gconf-service \
-    libasound2 \
-    libatk1.0-0 \
-    libc6 \
-    libcairo2 \
-    libcups2 \
-    libdbus-1-3 \
-    libexpat1 \
-    libfontconfig1 \
-    libgcc1 \
-    libgconf-2-4 \
-    libgdk-pixbuf2.0-0 \
-    libglib2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libstdc++6 \
-    libx11-6 \
-    libx11-xcb1 \
-    libxcb1 \
-    libxcomposite1 \
-    libxcursor1 \
-    libxdamage1 \
-    libxext6 \
-    libxfixes3 \
-    libxi6 \
-    libxrandr2 \
-    libxrender1 \
-    libxss1 \
-    libxtst6 \
-    ca-certificates \
-    fonts-liberation \
-    libappindicator1 \
-    libnss3 \
-    lsb-release \
-    xdg-utils \
-    libvulkan1 \
-    libnss3-dev \
-    libgdk-pixbuf2.0-dev \
-    libxkbcommon-x11-0 \
-    libxkbcommon0 \
-    libdbus-1-dev \
-    libxtst-dev \
-    libxcomposite-dev \
-    libxdamage-dev \
-    libxrandr-dev \
-    libxss-dev \
-    libatspi2.0-0"
+apt-get update -y
+apt-get install -y --no-install-recommends \
+  gnupg \
+  curl \
+  wget \
+  postgresql \
+  git \
+  libpq-dev \
+  libreadline-dev \
+  libssl-dev \
+  zlib1g-dev \
+  build-essential \
+  libasound2 \
+  libatk1.0-0 \
+  libc6 \
+  libcairo2 \
+  libcups2 \
+  libdbus-1-3 \
+  libexpat1 \
+  libfontconfig1 \
+  libgcc-s1 \
+  libgdk-pixbuf-2.0-0 \
+  libglib2.0-0 \
+  libgtk-3-0 \
+  libnspr4 \
+  libpango-1.0-0 \
+  libpangocairo-1.0-0 \
+  libstdc++6 \
+  libx11-6 \
+  libx11-xcb1 \
+  libxcb1 \
+  libxcomposite1 \
+  libxcursor1 \
+  libxdamage1 \
+  libxext6 \
+  libxfixes3 \
+  libxi6 \
+  libxrandr2 \
+  libxrender1 \
+  libxss1 \
+  libxtst6 \
+  ca-certificates \
+  fonts-liberation \
+  libayatana-appindicator3-1 \
+  libnss3 \
+  lsb-release \
+  xdg-utils \
+  libvulkan1 \
+  libnss3-dev \
+  libgdk-pixbuf-2.0-dev \
+  libgdk-pixbuf-xlib-2.0-dev \
+  libxkbcommon-x11-0 \
+  libxkbcommon0 \
+  libdbus-1-dev \
+  libxtst-dev \
+  libxcomposite-dev \
+  libxdamage-dev \
+  libxrandr-dev \
+  libxss-dev \
+  libatspi2.0-0
+
+# no services should try to start in a container; policy-rc.d will block — that’s fine
+'
+
 
 # Step 9: Install Metasploit from GitHub, and add auto-update script
 docker exec -it "$CONTAINER_NAME" bash -c '
@@ -213,9 +245,12 @@ git clone --depth 1 https://github.com/rapid7/metasploit-framework /opt/metasplo
 cd /opt/metasploit-framework
 
 # Install Ruby gems
+# Install Ruby gems (make sure xmlrpc is available first)
 gem install bundler:2.5.11
+gem install xmlrpc -v 0.3.3
+
 bundle config set --local without "development test"
-bundle install
+bundle install || bundle update --bundler
 
 # Symlink for easy access
 ln -s /opt/metasploit-framework/msfconsole /usr/local/bin/msfconsole

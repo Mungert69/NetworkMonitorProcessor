@@ -1,0 +1,28 @@
+# Debian 13 (trixie) runtime only
+FROM debian:trixie-slim
+
+# Install .NET 9 runtime using Debian 12 feed (no SDK on trixie yet)
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends wget curl gnupg ca-certificates; \
+    wget https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb; \
+    dpkg -i /tmp/packages-microsoft-prod.deb; \
+    rm /tmp/packages-microsoft-prod.deb; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends dotnet-runtime-9.0; \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the host-published output staged by the script (inside build context)
+COPY docker-context/publish/ ./
+
+# If compose uses /app/entrypoint.sh, ensure it is Unix LF and executable
+RUN if [ -f /app/entrypoint.sh ]; then \
+      sed -i 's/\r$//' /app/entrypoint.sh && \
+      chmod +x /app/entrypoint.sh; \
+    fi
+
+# Safe default when compose doesn't override entrypoint
+ENTRYPOINT ["dotnet", "NetworkMonitor.dll"]
+
