@@ -101,8 +101,12 @@ docker exec -it "$CONTAINER_NAME" bash -c '
 set -e
 
 apt install nmap
-ln -s /usr/bin/nmap nmap
+mkdir -p /app/openssl/bin/scripts
+mkdir -p /app/openssl/bin/nselib
+ln -s /usr/bin/nmap /app/openssl/bin/nmap
 cp /usr/share/nmap/nse_main.lua /app/openssl/bin/nse_main.lua
+cp -r /usr/share/nmap/scripts/* /app/openssl/bin/scripts/
+cp -r /usr/share/nmap/nselib/* /app/openssl/bin/nselib/
 echo "🧹 Cleaning up build tools and dev packages..."
 
 # Remove build-time packages
