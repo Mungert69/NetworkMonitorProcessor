@@ -20,7 +20,7 @@ if ! dotnet publish NetworkMonitorProcessor-debian12.csproj --os linux --arch x6
     echo "Failed to publish the Docker container. Exiting..."
     exit 1
 fi
-cp ~/code/NetworkMonitorProcessor/bin/Release/net9.0/linux-x64/NetworkMonitor.dll ~/code/NetworkMonitorProcessor/openssl-3.4.2/bin/dlls/
+cp ~/code/NetworkMonitorProcessor/bin/Release/net9.0/linux-x64/NetworkMonitor.dll ~/code/NetworkMonitorProcessor/openssl/bin/dlls/
 if ! dotnet publish NetworkMonitorProcessor-debian12.csproj --os linux --arch x64 /t:PublishContainer -c Release; then
     echo "Failed to publish the Docker container. Exiting..."
     exit 1
@@ -41,14 +41,14 @@ done
 # Step 5: Update and install all required packages for standard build  in one apt-get call
 docker exec -it "$CONTAINER_NAME" bash -c "
 set -e
-apt-get update && apt-get upgrade && apt-get -y install curl xvfb libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxrandr2 libxdamage1 libxkbcommon-x11-0 libgbm1 libasound2 libnss3 libgdk-pixbuf2.0-0 libpango1.0-0 libpangoft2-1.0-0 libpangocairo-1.0-0
+apt-get -y update && apt-get -y upgrade && apt-get -y install curl xvfb libatk1.0-0 libatk-bridge2.0-0 libcups2 libxcomposite1 libxrandr2 libxdamage1 libxkbcommon-x11-0 libgbm1 libasound2 libnss3 libgdk-pixbuf2.0-0 libpango1.0-0 libpangoft2-1.0-0 libpangocairo-1.0-0
 "
 
 # Step 6: Build nmap 7.92 . using older version most recent 
 #docker exec -it "$CONTAINER_NAME" bash -c '
 #set -e
 #
-#apt update && apt install -y \
+#apt -y update && apt install -y \
 #  build-essential \
 #  wget curl gnupg \
 #  liblua5.3-dev lua5.3 \
