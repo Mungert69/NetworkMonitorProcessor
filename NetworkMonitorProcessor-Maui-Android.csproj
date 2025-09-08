@@ -28,5 +28,11 @@
   <ItemGroup>
     <ProjectReference Include="..\NetworkMonitorLib\NetworkMonitor-Maui-Android.csproj" />
   </ItemGroup>
+  <ItemGroup >
+    <AndroidNativeLibrary Remove="docker-context/**" />
+    <Content              Remove="docker-context/**" />
+    <None                 Remove="docker-context/**" />
+    <MauiAsset            Remove="docker-context/**" />
+  </ItemGroup>
    
 </Project>
