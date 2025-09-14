@@ -121,41 +121,6 @@ apt-get -y update && apt-get -y upgrade && apt-get -y install \
 #/app/openssl/bin/nmap --version
 #'
 
-# Step 7: Nmap + layout + cleanup (TRIXIE-SAFE)
-docker exec -it "$CONTAINER_NAME" bash -c '
-set -e
-
-apt-get update -y
-apt-get install -y --no-install-recommends nmap
-
-# Ensure expected paths for your app
-mkdir -p /app/openssl/bin/scripts
-mkdir -p /app/openssl/bin/nselib
-
-# Symlink the system nmap into your app tree
-ln -sf /usr/bin/nmap /app/openssl/bin/nmap
-
-# Copy NSE assets
-cp -f /usr/share/nmap/nse_main.lua /app/openssl/bin/nse_main.lua
-cp -rf /usr/share/nmap/scripts/* /app/openssl/bin/scripts/
-cp -rf /usr/share/nmap/nselib/* /app/openssl/bin/nselib/
-
-echo "🧹 Cleaning up build tools and dev packages..."
-# (May not be installed; don’t fail if they aren’t)
-apt-get purge -y build-essential || true
-apt-get autoremove -y
-rm -rf /var/lib/apt/lists/* /root/.cache /root/.npm /tmp/nmap-* /tmp/nmap-*.tar.bz2 || true
-
-echo "✅ Clean-up complete. Final nmap info:"
-if command -v nmap >/dev/null 2>&1; then
-  nmap --version || true
-  echo "nmap path: $(command -v nmap)"
-  # Don’t fail if du can’t read
-  du -sh "$(command -v nmap)" 2>/dev/null || true
-else
-  echo "nmap not found on PATH"
-fi
-'
 
 # Step 8: Push both the standard bug version tag
 docker commit  "$CONTAINER_NAME" "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG"  # Commit to "tag"
@@ -280,6 +245,11 @@ else
 fi
 EOF
 chmod +x /etc/cron.daily/msfupdate-if-due
+
+# ✅ Ensure appuser owns Metasploit so msfupdate can run without root
+chown -R appuser:appuser /opt/metasploit-framework
+chown -R appuser:appuser /var/lib /var/log
+
 '
 # Step 10: Final cleanup before image commit
 docker exec -it "$CONTAINER_NAME" bash -c '

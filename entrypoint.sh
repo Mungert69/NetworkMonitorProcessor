@@ -1,36 +1,39 @@
 #!/bin/bash
+set -Eeuo pipefail
 
-# Log file for debugging
-LOG_FILE="application.log"
+TARGET_USER=appuser
+TARGET_UID=1654
+TARGET_GID=1654
+LOG_FILE="/app/application.log"
 
-# Function to log messages
 log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
 }
 
-# Check if xvfb-run is available
-if command -v xvfb-run &> /dev/null; then
+if [ "$(id -u)" = "0" ]; then
+  # Ensure log file exists and is writable
+  touch "$LOG_FILE"
+  chown "$TARGET_UID:$TARGET_GID" "$LOG_FILE"
+
+  # Drop privileges to appuser and grant capabilities, then exec dotnet directly
+  exec capsh --keep=1 \
+    --user="$TARGET_USER" --gid="$TARGET_GID" \
+    --caps="cap_net_raw,cap_net_admin,cap_net_bind_service+epi" \
+    --addamb=cap_net_raw,cap_net_admin,cap_net_bind_service \
+    -- -c "exec /app/entrypoint.sh run \"$@\""
+fi
+
+if [ "${1:-}" = "run" ]; then
+  shift
+  # Now running as non-root (appuser) with ambient caps available
+  if command -v xvfb-run >/dev/null 2>&1; then
     log "Using xvfb-run for virtual display."
-
-    # Set the DISPLAY environment variable explicitly
     export DISPLAY=:99
-
-    # Run the application with xvfb-run
-    xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" dotnet NetworkMonitorProcessor-debian12.dll 2>&1 | tee -a "$LOG_FILE"
-    EXIT_CODE=${PIPESTATUS[0]}
-else
+    exec xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+      dotnet /app/NetworkMonitorProcessor-debian12.dll "$@" 2>&1 | tee -a "$LOG_FILE"
+  else
     log "xvfb-run not found. Running directly."
-
-    # Run the application directly
-    dotnet NetworkMonitorProcessor-debian12.dll 2>&1 | tee -a "$LOG_FILE"
-    EXIT_CODE=$?
+    exec dotnet /app/NetworkMonitorProcessor-debian12.dll "$@" 2>&1 | tee -a "$LOG_FILE"
+  fi
 fi
 
-# Check the exit code and log the result
-if [ $EXIT_CODE -eq 0 ]; then
-    log "Application completed successfully."
-else
-    log "Application failed with exit code $EXIT_CODE."
-fi
-
-exit $EXIT_CODE
