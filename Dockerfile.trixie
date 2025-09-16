@@ -28,11 +28,11 @@ WORKDIR /app
 COPY docker-context/publish/ ./
 
 # Mirror system nmap into expected app tree + NSE assets
-RUN mkdir -p /app/openssl/bin/scripts /app/openssl/bin/nselib && \
+RUN mkdir -p /app/openssl/bin && \
     ln -sf /usr/bin/nmap /app/openssl/bin/nmap && \
-    cp -f /usr/share/nmap/nse_main.lua /app/openssl/bin/nse_main.lua && \
-    cp -rf /usr/share/nmap/scripts/* /app/openssl/bin/scripts/ && \
-    cp -rf /usr/share/nmap/nselib/* /app/openssl/bin/nselib/
+    ln -sf /usr/share/nmap/nse_main.lua /app/openssl/bin/nse_main.lua && \
+    ln -s /usr/share/nmap/scripts /app/openssl/bin/scripts && \
+    ln -s /usr/share/nmap/nselib  /app/openssl/bin/nselib
 
 # Ensure entrypoint is executable
 RUN if [ -f /app/entrypoint.sh ]; then \

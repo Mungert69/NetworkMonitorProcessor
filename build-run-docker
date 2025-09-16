@@ -1,6 +1,8 @@
 #!/bin/sh
 set -euo pipefail
 
+
+
 # --- config ---
 PROJECT="NetworkMonitorProcessor-debian12.csproj"
 DOCKERFILE="Dockerfile.trixie"
@@ -21,6 +23,7 @@ DOCKER_IMAGE_FULL=$(grep -m1 'image:' "$DOCKER_COMPOSE_FILE" | awk '{ print $2 }
 DOCKER_IMAGE_NAME=$(echo "$DOCKER_IMAGE_FULL" | cut -d':' -f1)
 DOCKER_IMAGE_TAG=$(echo "$DOCKER_IMAGE_FULL" | cut -d':' -f2)
 echo "Docker Image Full is $DOCKER_IMAGE_FULL . Name is $DOCKER_IMAGE_NAME ."
+
 
 # --- tests ---
 dotnet test "$PROJECT"
@@ -50,8 +53,8 @@ until docker exec -it "$CONTAINER_NAME" bash -c "ls /app" >/dev/null 2>&1; do
 done
 docker exec -it "$CONTAINER_NAME" bash -c "
 set -e
-apt-get -y update && apt-get -y upgrade && apt-get -y install \
-  curl xvfb \
+apt-get -y update  && apt-get -y install --no-install-recommends \
+  curl \
   libatk1.0-0 \
   libatk-bridge2.0-0 \
   libcups2 \
@@ -66,6 +69,7 @@ apt-get -y update && apt-get -y upgrade && apt-get -y install \
   libpango-1.0-0 \
   libpangoft2-1.0-0 \
   libpangocairo-1.0-0
+apt-get -y install xvfb
 "
 
 
@@ -139,7 +143,6 @@ apt-get install -y --no-install-recommends \
   libreadline-dev \
   libssl-dev \
   zlib1g-dev \
-  build-essential \
   libasound2 \
   libatk1.0-0 \
   libc6 \
@@ -191,49 +194,81 @@ apt-get install -y --no-install-recommends \
 
 # no services should try to start in a container; policy-rc.d will block — that’s fine
 '
-
-
 # Step 9: Install Metasploit from GitHub, and add auto-update script
 docker exec -it "$CONTAINER_NAME" bash -c '
 set -e
 
-# Install dependencies for Metasploit from source
+# Build deps (unchanged list)
 apt-get -y update && apt-get install -y \
   autoconf bison build-essential libssl-dev libyaml-dev \
   libreadline-dev zlib1g-dev libgmp-dev libpcap-dev \
   libsqlite3-dev libxml2-dev libxslt1-dev libtool \
   libffi-dev git gnupg2 libpq-dev ruby ruby-dev liblzma-dev
 
-#
-# Clone Metasploit Framework
-git clone --depth 1 https://github.com/rapid7/metasploit-framework /opt/metasploit-framework
-cd /opt/metasploit-framework
+repo=/opt/metasploit-framework
 
-# Install Ruby gems
-# Install Ruby gems (make sure xmlrpc is available first)
-gem install bundler:2.5.11
-gem install xmlrpc -v 0.3.3
+# Clone first (idempotent)
+if [ ! -d "$repo/.git" ]; then
+  git clone --depth 1 --no-tags https://github.com/rapid7/metasploit-framework "$repo"
+fi
+git config --global --add safe.directory "$repo"
 
+# Make updates shallow/fast (now that repo exists)
+git -C $repo config pull.ff only
+git -C $repo remote | grep -qx upstream || git -C $repo remote add upstream https://github.com/rapid7/metasploit-framework.git
+git -C $repo config remote.origin.tagOpt --no-tags
+git -C $repo config remote.upstream.tagOpt --no-tags
+git -C $repo config remote.origin.fetch +refs/heads/master:refs/remotes/origin/master
+git -C $repo config remote.upstream.fetch +refs/heads/master:refs/remotes/upstream/master
+git -C $repo config remote.origin.promisor true
+git -C $repo config remote.origin.partialclonefilter blob:none
+git -C $repo config remote.upstream.promisor true
+git -C $repo config remote.upstream.partialclonefilter blob:none
+
+# Seed minimal history for upstream; don’t fail the build if network blocks it
+git -C $repo fetch --depth=1 --filter=blob:none --no-tags upstream master || true
+git -C $repo reset --hard upstream/master || git -C $repo reset --hard origin/master
+
+cd $repo
+
+# --- Bundler version from Gemfile.lock (safe) ---
+if [ -f Gemfile.lock ]; then
+  BUNDLER_VER="$(grep -A1 "^BUNDLED WITH\$" Gemfile.lock | tail -n1 | sed -E "s/^[[:space:]]+//")" || BUNDLER_VER=""
+else
+  BUNDLER_VER=""
+fi
+if [ -n "$BUNDLER_VER" ]; then
+  gem install "bundler:$BUNDLER_VER"
+else
+  gem install bundler
+fi
+
+# --- xmlrpc only if present in lockfile (otherwise Bundler will handle it) ---
+if [ -f Gemfile.lock ] && grep -qE "^[[:space:]]*xmlrpc \(" Gemfile.lock; then
+  XMLRPC_VER="$(grep -E "^[[:space:]]*xmlrpc \(" Gemfile.lock | head -n1 | sed -E "s/.*\(([0-9.]+)\).*/\1/")" || XMLRPC_VER=""
+  [ -n "$XMLRPC_VER" ] && gem install "xmlrpc:$XMLRPC_VER" || true
+fi
+
+# Bundle
 bundle config set --local without "development test"
-bundle install || bundle update --bundler
+JOBS="$(nproc 2>/dev/null || echo 1)"
+bundle install --jobs "$JOBS" --retry 3
 
-# Symlink for easy access
-ln -s /opt/metasploit-framework/msfconsole /usr/local/bin/msfconsole
-ln -s /opt/metasploit-framework/msfupdate /usr/local/bin/msfupdate
-ln -s /opt/metasploit-framework/msfvenom /usr/local/bin/msfvenom
-ln -s /opt/metasploit-framework/msfdb /usr/local/bin/msfdb
-ln -s /opt/metasploit-framework/msfrpc /usr/local/bin/msfrpc
-ln -s /opt/metasploit-framework/msfrpcd /usr/local/bin/msfrpcd
-ln -s /opt/metasploit-framework/msfd /usr/local/bin/msfd
+# Symlinks (unchanged)
+ln -s $repo/msfconsole /usr/local/bin/msfconsole || true
+ln -s $repo/msfupdate  /usr/local/bin/msfupdate  || true
+ln -s $repo/msfvenom   /usr/local/bin/msfvenom   || true
+ln -s $repo/msfdb      /usr/local/bin/msfdb      || true
+ln -s $repo/msfrpc     /usr/local/bin/msfrpc     || true
+ln -s $repo/msfrpcd    /usr/local/bin/msfrpcd    || true
+ln -s $repo/msfd       /usr/local/bin/msfd       || true
 
-# Add msfupdate-if-due script to cron.daily (no cron install needed)
+# Cron (unchanged body)
 mkdir -p /var/lib /var/log
 cat << "EOF" > /etc/cron.daily/msfupdate-if-due
 #!/bin/bash
-
 STAMP_FILE="/var/lib/msfupdate-last-run"
 NOW=$(date +%s)
-
 if [ ! -f "$STAMP_FILE" ] || [ $((NOW - $(cat "$STAMP_FILE"))) -ge 864000 ]; then
   echo "[$(date)] Running msfupdate (git pull)..." >> /var/log/msfupdate.log
   cd /opt/metasploit-framework
@@ -246,11 +281,17 @@ fi
 EOF
 chmod +x /etc/cron.daily/msfupdate-if-due
 
-# ✅ Ensure appuser owns Metasploit so msfupdate can run without root
-chown -R appuser:appuser /opt/metasploit-framework
+# Ownership + remote URLs (idempotent)
+chown -R appuser:appuser $repo
 chown -R appuser:appuser /var/lib /var/log
-
+git -C $repo remote | grep -qx upstream || git -C $repo remote add upstream https://github.com/rapid7/metasploit-framework.git
+git -C $repo remote set-url origin   https://github.com/rapid7/metasploit-framework.git
+git -C $repo remote set-url upstream https://github.com/rapid7/metasploit-framework.git
+git config --global --add safe.directory $repo
+git config --global user.name  "Metasploit User"
+git config --global user.email "metasploit@example.com"
 '
+
 # Step 10: Final cleanup before image commit
 docker exec -it "$CONTAINER_NAME" bash -c '
 set -e
