@@ -1,0 +1,332 @@
+#!/bin/sh
+set -euo pipefail
+
+
+
+# --- config ---
+PROJECT="NetworkMonitorProcessor-debian12.csproj"
+DOCKERFILE="Dockerfile.trixie"
+DOCKER_COMPOSE_FILE="$HOME/code/NetworkMonitor/docker-compose-run-processor.yml"
+CONTAINER_NAME="processor"
+
+# --- cleanup BEFORE tests (prevents duplicate types from stale publish) ---
+[ -d "./publish" ] && rm -rf ./publish
+find ./openssl/bin -type f -name '*.cs' -delete 2>/dev/null || true
+
+# optional secrets/appsettings
+SECRET_FILE="../secret"
+[ -f "appsettings-live.json" ] && cp appsettings-live.json appsettings.json || echo "⚠ appsettings-live.json not found (skipping copy)."
+[ -f "$SECRET_FILE" ] || echo "⚠ $SECRET_FILE not found (continuing without REPO_URL)."
+
+# image name/tag from compose
+DOCKER_IMAGE_FULL=$(grep -m1 'image:' "$DOCKER_COMPOSE_FILE" | awk '{ print $2 }')
+DOCKER_IMAGE_NAME=$(echo "$DOCKER_IMAGE_FULL" | cut -d':' -f1)
+DOCKER_IMAGE_TAG=$(echo "$DOCKER_IMAGE_FULL" | cut -d':' -f2)
+echo "Docker Image Full is $DOCKER_IMAGE_FULL . Name is $DOCKER_IMAGE_NAME ."
+
+
+# --- tests ---
+dotnet test "$PROJECT"
+
+# --- publish on host (outside project tree) ---
+ARTIFACTS_DIR="../_artifacts/processor"
+PUBLISH_DIR="$ARTIFACTS_DIR/publish"
+rm -rf "$PUBLISH_DIR"
+mkdir -p "$PUBLISH_DIR"
+dotnet publish "$PROJECT" -c Release -o "$PUBLISH_DIR" --os linux --arch x64
+
+# --- stage into docker build context (so COPY is allowed) ---
+STAGING_DIR="./docker-context/publish"
+rm -rf "./docker-context"
+mkdir -p "$STAGING_DIR"
+cp -a "$PUBLISH_DIR/." "$STAGING_DIR/"
+
+# --- build docker image (Debian 13 runtime + .NET runtime from Debian 12 repo) ---
+docker build -f "$DOCKERFILE" -t "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG" .
+
+# --- run via compose ---
+docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+
+echo "Waiting for the container to be ready..."
+until docker exec -it "$CONTAINER_NAME" bash -c "ls /app" >/dev/null 2>&1; do
+  sleep 2
+done
+docker exec -it "$CONTAINER_NAME" bash -c "
+set -e
+apt-get -y update  && apt-get -y install --no-install-recommends \
+  curl \
+  libatk1.0-0 \
+  libatk-bridge2.0-0 \
+  libcups2 \
+  libxcomposite1 \
+  libxrandr2 \
+  libxdamage1 \
+  libxkbcommon-x11-0 \
+  libgbm1 \
+  libasound2 \
+  libnss3 \
+  libgdk-pixbuf-2.0-0 \
+  libpango-1.0-0 \
+  libpangoft2-1.0-0 \
+  libpangocairo-1.0-0
+apt-get -y install xvfb
+"
+
+
+# Step 6: Build nmap 7.92 . using older version most recent 
+#docker exec -it "$CONTAINER_NAME" bash -c '
+#set -e
+#
+#apt -y update && apt install -y \
+#  build-essential \
+#  wget curl gnupg \
+#  liblua5.3-dev lua5.3 \
+#  libpcre3-dev \
+#  libssh2-1-dev \
+#  libpcap-dev \
+#  zlib1g-dev \
+#  libssl-dev \
+#  flex bison
+#
+# 📁 Download and extract Nmap source
+#cd /tmp
+#VERSION="nmap-7.92"
+#ARCHIVE="$VERSION.tar.bz2"
+#
+#wget "https://nmap.org/dist/${ARCHIVE}"
+#wget "https://nmap.org/dist/sigs/${ARCHIVE}.asc" || true  # Optional signature check
+#
+#tar -xf "$ARCHIVE"
+#cd "$VERSION"
+#
+# 🔧 Configure with only system libraries
+#./configure \
+#  --without-zenmap \
+#  --with-liblua=/usr/include/lua5.3 \
+#  --with-libpcre=/usr \
+#  --with-libssh2=/usr \
+#  --with-libpcap=/usr \
+#  --with-openssl=/usr
+#
+# 🛠 Build and install
+#make -j$(nproc)
+#make install
+
+# 🧼 Clean up
+#cd /
+#rm -rf "/tmp/$VERSION" "/tmp/$ARCHIVE" "/tmp/${ARCHIVE}.asc" || true
+#
+# 🧪 Verify
+#echo "✅ Build complete. Nmap version:"
+#mkdir -p /app/openssl/bin
+#ln -s /usr/local/bin/nmap /app/openssl/bin/nmap
+# Verify installation
+#nmap --version
+#/app/openssl/bin/nmap --version
+#'
+
+
+# Step 8: Push both the standard bug version tag
+docker commit  "$CONTAINER_NAME" "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG"  # Commit to "tag"
+docker push "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG"  # Push the "tag" tag
+
+docker exec -e DEBIAN_FRONTEND=noninteractive -it "$CONTAINER_NAME" bash -c '
+set -e
+apt-get update -y
+apt-get install -y --no-install-recommends \
+  gnupg \
+  curl \
+  wget \
+  postgresql \
+  git \
+  libpq-dev \
+  libreadline-dev \
+  libssl-dev \
+  zlib1g-dev \
+  libasound2 \
+  libatk1.0-0 \
+  libc6 \
+  libcairo2 \
+  libcups2 \
+  libdbus-1-3 \
+  libexpat1 \
+  libfontconfig1 \
+  libgcc-s1 \
+  libgdk-pixbuf-2.0-0 \
+  libglib2.0-0 \
+  libgtk-3-0 \
+  libnspr4 \
+  libpango-1.0-0 \
+  libpangocairo-1.0-0 \
+  libstdc++6 \
+  libx11-6 \
+  libx11-xcb1 \
+  libxcb1 \
+  libxcomposite1 \
+  libxcursor1 \
+  libxdamage1 \
+  libxext6 \
+  libxfixes3 \
+  libxi6 \
+  libxrandr2 \
+  libxrender1 \
+  libxss1 \
+  libxtst6 \
+  ca-certificates \
+  fonts-liberation \
+  libayatana-appindicator3-1 \
+  libnss3 \
+  lsb-release \
+  xdg-utils \
+  libvulkan1 \
+  libnss3-dev \
+  libgdk-pixbuf-2.0-dev \
+  libgdk-pixbuf-xlib-2.0-dev \
+  libxkbcommon-x11-0 \
+  libxkbcommon0 \
+  libdbus-1-dev \
+  libxtst-dev \
+  libxcomposite-dev \
+  libxdamage-dev \
+  libxrandr-dev \
+  libxss-dev \
+  libatspi2.0-0
+
+# no services should try to start in a container; policy-rc.d will block — that’s fine
+'
+# Step 9: Install Metasploit from GitHub, and add auto-update script
+docker exec -it "$CONTAINER_NAME" bash -c '
+set -e
+
+# Build deps (unchanged list)
+apt-get -y update && apt-get install -y \
+  autoconf bison build-essential libssl-dev libyaml-dev \
+  libreadline-dev zlib1g-dev libgmp-dev libpcap-dev \
+  libsqlite3-dev libxml2-dev libxslt1-dev libtool \
+  libffi-dev git gnupg2 libpq-dev ruby ruby-dev liblzma-dev
+
+repo=/opt/metasploit-framework
+
+# Clone first (idempotent)
+if [ ! -d "$repo/.git" ]; then
+  git clone --depth 1 --no-tags https://github.com/rapid7/metasploit-framework "$repo"
+fi
+git config --global --add safe.directory "$repo"
+
+# Make updates shallow/fast (now that repo exists)
+git -C $repo config pull.ff only
+git -C $repo remote | grep -qx upstream || git -C $repo remote add upstream https://github.com/rapid7/metasploit-framework.git
+git -C $repo config remote.origin.tagOpt --no-tags
+git -C $repo config remote.upstream.tagOpt --no-tags
+git -C $repo config remote.origin.fetch +refs/heads/master:refs/remotes/origin/master
+git -C $repo config remote.upstream.fetch +refs/heads/master:refs/remotes/upstream/master
+git -C $repo config remote.origin.promisor true
+git -C $repo config remote.origin.partialclonefilter blob:none
+git -C $repo config remote.upstream.promisor true
+git -C $repo config remote.upstream.partialclonefilter blob:none
+
+# Seed minimal history for upstream; don’t fail the build if network blocks it
+git -C $repo fetch --depth=1 --filter=blob:none --no-tags upstream master || true
+git -C $repo reset --hard upstream/master || git -C $repo reset --hard origin/master
+
+cd $repo
+
+# --- Bundler version from Gemfile.lock (safe) ---
+if [ -f Gemfile.lock ]; then
+  BUNDLER_VER="$(grep -A1 "^BUNDLED WITH\$" Gemfile.lock | tail -n1 | sed -E "s/^[[:space:]]+//")" || BUNDLER_VER=""
+else
+  BUNDLER_VER=""
+fi
+if [ -n "$BUNDLER_VER" ]; then
+  gem install "bundler:$BUNDLER_VER"
+else
+  gem install bundler
+fi
+
+# --- xmlrpc only if present in lockfile (otherwise Bundler will handle it) ---
+if [ -f Gemfile.lock ] && grep -qE "^[[:space:]]*xmlrpc \(" Gemfile.lock; then
+  XMLRPC_VER="$(grep -E "^[[:space:]]*xmlrpc \(" Gemfile.lock | head -n1 | sed -E "s/.*\(([0-9.]+)\).*/\1/")" || XMLRPC_VER=""
+  [ -n "$XMLRPC_VER" ] && gem install "xmlrpc:$XMLRPC_VER" || true
+fi
+
+# Bundle
+bundle config set --local without "development test"
+JOBS="$(nproc 2>/dev/null || echo 1)"
+bundle install --jobs "$JOBS" --retry 3
+
+# Symlinks (unchanged)
+ln -s $repo/msfconsole /usr/local/bin/msfconsole || true
+ln -s $repo/msfupdate  /usr/local/bin/msfupdate  || true
+ln -s $repo/msfvenom   /usr/local/bin/msfvenom   || true
+ln -s $repo/msfdb      /usr/local/bin/msfdb      || true
+ln -s $repo/msfrpc     /usr/local/bin/msfrpc     || true
+ln -s $repo/msfrpcd    /usr/local/bin/msfrpcd    || true
+ln -s $repo/msfd       /usr/local/bin/msfd       || true
+
+# Cron (unchanged body)
+mkdir -p /var/lib /var/log
+cat << "EOF" > /etc/cron.daily/msfupdate-if-due
+#!/bin/bash
+STAMP_FILE="/var/lib/msfupdate-last-run"
+NOW=$(date +%s)
+if [ ! -f "$STAMP_FILE" ] || [ $((NOW - $(cat "$STAMP_FILE"))) -ge 864000 ]; then
+  echo "[$(date)] Running msfupdate (git pull)..." >> /var/log/msfupdate.log
+  cd /opt/metasploit-framework
+  git pull >> /var/log/msfupdate.log 2>&1
+  bundle install >> /var/log/msfupdate.log 2>&1
+  date +%s > "$STAMP_FILE"
+else
+  echo "[$(date)] Skipping msfupdate, not due yet." >> /var/log/msfupdate.log
+fi
+EOF
+chmod +x /etc/cron.daily/msfupdate-if-due
+
+# Ownership + remote URLs (idempotent)
+chown -R appuser:appuser $repo
+chown -R appuser:appuser /var/lib /var/log
+git -C $repo remote | grep -qx upstream || git -C $repo remote add upstream https://github.com/rapid7/metasploit-framework.git
+git -C $repo remote set-url origin   https://github.com/rapid7/metasploit-framework.git
+git -C $repo remote set-url upstream https://github.com/rapid7/metasploit-framework.git
+git config --global --add safe.directory $repo
+git config --global user.name  "Metasploit User"
+git config --global user.email "metasploit@example.com"
+'
+
+# Step 10: Final cleanup before image commit
+docker exec -it "$CONTAINER_NAME" bash -c '
+set -e
+
+echo "🧹 Final cleanup before image commit..."
+
+# Purge all development headers and tools
+apt purge -y  "build-essential" "bison" "autoconf" "flex"
+
+# Autoremove unneeded deps
+apt autoremove -y
+
+# Remove APT cache and orphaned packages
+apt clean
+rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.cache /root/.npm
+
+# Remove Gem docs, man pages, and info pages
+rm -rf /opt/metasploit-framework/doc /usr/share/doc /usr/share/man /usr/share/info
+
+# Zero out logs
+truncate -s 0 /var/log/msfupdate.log || true
+
+echo "✅ Library and system cleanup complete."
+'
+
+# Step 12: Commit full build as latest tag
+docker commit  "$CONTAINER_NAME" "$DOCKER_IMAGE_NAME:latest"  # Commit to "latest"
+docker push "$DOCKER_IMAGE_NAME:latest"  # Push the "latest" tag
+
+# Step 13: Confirm completion
+echo "The container is running, and the extra commands have been executed. Image has been pushed to Docker Hub as $DOCKER_IMAGE_FULL and $DOCKER_IMAGE_NAME:latest."
+
+# Step 14: Stop the container using Docker Compose
+if ! docker compose -f "$DOCKER_COMPOSE_FILE" down; then
+    echo "Failed to stop the container using Docker Compose. Exiting..."
+    exit 1
+fi
+

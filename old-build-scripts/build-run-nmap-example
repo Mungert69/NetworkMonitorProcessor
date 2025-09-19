@@ -56,10 +56,66 @@ docker build --progress=plain -f "$DOCKERFILE" -t "$DOCKER_IMAGE_NAME:$DOCKER_IM
 # --- run via compose ---
 docker compose -f "$DOCKER_COMPOSE_FILE" up -d
 
+# no longer used left in place as might have to use it again; If the source providers object to its use under our licensing
+# Step 6: Build nmap 7.92 . This version is open source
+#docker exec -it "$CONTAINER_NAME" bash -c '
+#set -e
+#
+#apt -y update && apt install -y \
+#  build-essential \
+#  wget curl gnupg \
+#  liblua5.3-dev lua5.3 \
+#  libpcre3-dev \
+#  libssh2-1-dev \
+#  libpcap-dev \
+#  zlib1g-dev \
+#  libssl-dev \
+#  flex bison
+#
+# 📁 Download and extract Nmap source
+#cd /tmp
+#VERSION="nmap-7.92"
+#ARCHIVE="$VERSION.tar.bz2"
+#
+#wget "https://nmap.org/dist/${ARCHIVE}"
+#wget "https://nmap.org/dist/sigs/${ARCHIVE}.asc" || true  # Optional signature check
+#
+#tar -xf "$ARCHIVE"
+#cd "$VERSION"
+#
+# 🔧 Configure with only system libraries
+#./configure \
+#  --without-zenmap \
+#  --with-liblua=/usr/include/lua5.3 \
+#  --with-libpcre=/usr \
+#  --with-libssh2=/usr \
+#  --with-libpcap=/usr \
+#  --with-openssl=/usr
+#
+# 🛠 Build and install
+#make -j$(nproc)
+#make install
 
+# 🧼 Clean up
+#cd /
+#rm -rf "/tmp/$VERSION" "/tmp/$ARCHIVE" "/tmp/${ARCHIVE}.asc" || true
+#
+# 🧪 Verify
+#echo "✅ Build complete. Nmap version:"
+#mkdir -p /app/openssl/bin
+#ln -s /usr/local/bin/nmap /app/openssl/bin/nmap
+# Verify installation
+#nmap --version
+#/app/openssl/bin/nmap --version
+#'
+
+
+# Step 8: Push both the standard bug version tag
 docker push "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG"  # Push the "tag" tag
 
+
 ## start second stage build for metasploit image
+
 
 # Resolve the digest of the base you just pushed
 BASE_REF="$(docker inspect --format='{{index .RepoDigests 0}}' "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG")"

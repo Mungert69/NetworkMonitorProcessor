@@ -1,0 +1,93 @@
+# syntax=docker/dockerfile:1.6
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN <<'BASH'
+set -eux
+
+apt-get update
+# runtime + build deps needed by Metasploit
+apt-get install -y --no-install-recommends \
+  gnupg curl wget git postgresql \
+  libpq-dev libreadline-dev libssl-dev zlib1g-dev \
+  libasound2 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 \
+  libexpat1 libfontconfig1 libgcc-s1 libgdk-pixbuf-2.0-0 libglib2.0-0 \
+  libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 \
+  libstdc++6 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 \
+  libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 \
+  libxss1 libxtst6 fonts-liberation xdg-utils libvulkan1 \
+  libgdk-pixbuf-2.0-dev libgdk-pixbuf-xlib-2.0-dev libxkbcommon-x11-0 \
+  libxkbcommon0 libdbus-1-dev libxtst-dev libxcomposite-dev \
+  libxdamage-dev libxrandr-dev libxss-dev libatspi2.0-0
+
+apt-get install -y \
+  autoconf bison build-essential libyaml-dev libgmp-dev libpcap-dev \
+  libsqlite3-dev libxml2-dev libxslt1-dev libtool libffi-dev \
+  ruby ruby-dev liblzma-dev
+
+repo=/opt/metasploit-framework
+if [ -d "$repo/.git" ]; then
+  git -C "$repo" reset --hard
+  git -C "$repo" clean -fdx
+else
+  git clone --depth 1 --no-tags https://github.com/rapid7/metasploit-framework "$repo"
+fi
+git config --global --add safe.directory "$repo"
+
+cd "$repo"
+if [ -f Gemfile.lock ]; then
+  BUNDLER_VER="$(grep -A1 '^BUNDLED WITH$' Gemfile.lock | tail -n1 | sed -E 's/^[[:space:]]+//')" || BUNDLER_VER=""
+else
+  BUNDLER_VER=""
+fi
+if [ -n "${BUNDLER_VER}" ]; then
+  gem install "bundler:${BUNDLER_VER}"
+else
+  gem install bundler
+fi
+
+if [ -f Gemfile.lock ] && grep -qE '^[[:space:]]*xmlrpc \(' Gemfile.lock; then
+  XMLRPC_VER="$(grep -E '^[[:space:]]*xmlrpc \(' Gemfile.lock | head -n1 | sed -E 's/.*\(([0-9.]+)\).*/\1/')" || XMLRPC_VER=""
+  [ -n "${XMLRPC_VER}" ] && gem install "xmlrpc:${XMLRPC_VER}" || true
+fi
+
+bundle config set --local without "development test"
+JOBS="$(nproc 2>/dev/null || echo 1)"
+bundle install --jobs "${JOBS}" --retry 3
+
+ln -s "$repo/msfconsole" /usr/local/bin/msfconsole || true
+ln -s "$repo/msfupdate"  /usr/local/bin/msfupdate  || true
+ln -s "$repo/msfvenom"   /usr/local/bin/msfvenom   || true
+ln -s "$repo/msfdb"      /usr/local/bin/msfdb      || true
+ln -s "$repo/msfrpc"     /usr/local/bin/msfrpc     || true
+ln -s "$repo/msfrpcd"    /usr/local/bin/msfrpcd    || true
+ln -s "$repo/msfd"       /usr/local/bin/msfd       || true
+
+mkdir -p /var/lib /var/log
+cat >/etc/cron.daily/msfupdate-if-due <<'EOF'
+#!/bin/bash
+STAMP_FILE="/var/lib/msfupdate-last-run"
+NOW=$(date +%s)
+if [ ! -f "$STAMP_FILE" ] || [ $((NOW - $(cat "$STAMP_FILE"))) -ge 864000 ]; then
+  echo "[$(date)] Running msfupdate (git pull)..." >> /var/log/msfupdate.log
+  cd /opt/metasploit-framework
+  git pull >> /var/log/msfupdate.log 2>&1
+  bundle install >> /var/log/msfupdate.log 2>&1
+  date +%s > "$STAMP_FILE"
+else
+  echo "[$(date)] Skipping msfupdate, not due yet." >> /var/log/msfupdate.log
+fi
+EOF
+chmod +x /etc/cron.daily/msfupdate-if-due
+chown -R appuser:appuser "$repo" /var/lib /var/log
+
+# strip build tools and caches
+apt purge -y build-essential bison autoconf flex || true
+apt autoremove -y
+apt clean
+rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.cache
+rm -rf /opt/metasploit-framework/doc /usr/share/doc /usr/share/man /usr/share/info
+BASH
+

@@ -1,7 +1,12 @@
 # Debian 13 (trixie) runtime only
 FROM debian:trixie-slim
+
+# Create fixed UID/GID runtime user
 RUN groupadd -g 1654 appuser && \
     useradd -u 1654 -g 1654 -M -s /usr/sbin/nologin appuser
+# Give appuser a home directory
+RUN mkdir -p /home/appuser && chown -R appuser:appuser /home/appuser
+ENV HOME=/home/appuser
 
 # Install .NET runtime, nmap, gosu, and tools we need
 RUN set -eux; \
@@ -10,7 +15,8 @@ RUN set -eux; \
         wget curl gnupg ca-certificates \
         libcap2-bin \
         nmap \
-        gosu; \
+        gosu \
+    ; \
     wget https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb; \
     dpkg -i /tmp/packages-microsoft-prod.deb; \
     rm /tmp/packages-microsoft-prod.deb; \
@@ -18,18 +24,15 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends dotnet-runtime-9.0; \
     rm -rf /var/lib/apt/lists/*
 
-# We intentionally DO NOT setcap the dotnet binary (avoids EPERM on exec).
-# nmap can work via ambient caps; no setcap needed either.
-
 WORKDIR /app
 COPY docker-context/publish/ ./
 
 # Mirror system nmap into expected app tree + NSE assets
-RUN mkdir -p /app/openssl/bin/scripts /app/openssl/bin/nselib && \
+RUN mkdir -p /app/openssl/bin && \
     ln -sf /usr/bin/nmap /app/openssl/bin/nmap && \
-    cp -f /usr/share/nmap/nse_main.lua /app/openssl/bin/nse_main.lua && \
-    cp -rf /usr/share/nmap/scripts/* /app/openssl/bin/scripts/ && \
-    cp -rf /usr/share/nmap/nselib/* /app/openssl/bin/nselib/
+    ln -sf /usr/share/nmap/nse_main.lua /app/openssl/bin/nse_main.lua && \
+    ln -s /usr/share/nmap/scripts /app/openssl/bin/scripts && \
+    ln -s /usr/share/nmap/nselib  /app/openssl/bin/nselib
 
 # Ensure entrypoint is executable
 RUN if [ -f /app/entrypoint.sh ]; then \
@@ -37,7 +40,8 @@ RUN if [ -f /app/entrypoint.sh ]; then \
       chmod +x /app/entrypoint.sh; \
     fi
 
-# Start as root; entrypoint will drop to UID 1654 with ambient caps
+# Start as root; entrypoint will drop to appuser with ambient caps
 USER root
+
 ENTRYPOINT ["/app/entrypoint.sh"]
 
