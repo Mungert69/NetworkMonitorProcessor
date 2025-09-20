@@ -547,7 +547,7 @@ namespace NetworkMonitor.Objects.Repository
                 result.Message += "Error : Failed to run Connect : Error was : " + e.ToString() + " ";
             }
             if (result.Success == true)
-                _logger.LogInformation(result.Message);
+                _logger.LogDebug(result.Message);
             else _logger.LogError(result.Message);
             return result;
         }
@@ -572,7 +572,7 @@ namespace NetworkMonitor.Objects.Repository
                 result.Success = connectResult.Success;
                 result.Data = connectResult.Data;
                 if (result.Success == true)
-                    _logger.LogInformation(result.Message);
+                    _logger.LogDebug(result.Message);
                 else _logger.LogError(result.Message);
             }
             catch (Exception e)
@@ -602,7 +602,7 @@ namespace NetworkMonitor.Objects.Repository
                 _monitorPingProcessor.ProcessesMonitorReturnData(processorDataObj);
                 result.Message += "Success : updated RemovePingInfos. ";
                 result.Success = true;
-                _logger.LogInformation(result.Message);
+                _logger.LogDebug(result.Message);
             }
             catch (Exception e)
             {
@@ -1312,7 +1312,7 @@ namespace NetworkMonitor.Objects.Repository
                 result.Success = connectResult.Success;
                 result.Data = connectResult.Data;
                 if (result.Success == true)
-                    _logger.LogInformation(result.Message);
+                    _logger.LogDebug(result.Message);
                 else _logger.LogError(result.Message);
             }
             catch (Exception e)

@@ -161,11 +161,11 @@ namespace NetworkMonitor.Objects.Repository
                     processorDataObj = null;
                     processorDataObjAlert = null;
                 }
-                logger.LogInformation(timerStr);
+                logger.LogDebug(timerStr);
                 timer.Stop();
                 result.Message += " Published event ProcessorItitObj.IsProcessorReady = true ";
                 result.Success = true;
-                logger.LogInformation(result.Message);
+                logger.LogDebug(result.Message);
             }
             catch (Exception e)
             {
@@ -199,7 +199,7 @@ namespace NetworkMonitor.Objects.Repository
                 processorObj.IsProcessorReady = isReady;
                 processorObj.AppID = appID;
                 await rabbitRepo.PublishAsync<ProcessorInitObj>("processorReady", processorObj);
-                logger.LogInformation(" Published event ProcessorItitObj.IsProcessorReady = " + isReady);
+                logger.LogDebug(" Published event ProcessorItitObj.IsProcessorReady = " + isReady);
             }
             catch (Exception e)
             {
