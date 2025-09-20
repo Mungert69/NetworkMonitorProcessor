@@ -78,49 +78,18 @@ namespace NetworkMonitor.Processor
                         });
                   });
             var logger = loggerFactory.CreateLogger<Program>();
-            FileRepo fileRepo;
-            if (Directory.Exists("./state"))
+            var fileRepo = new FileRepo(true, "./state");
+
+            // Seed defaults if missing. (These do not overwrite non-empty files.)
+            fileRepo.CheckFileExistsWithCreateStringJsonZObject("ProcessorDataObj", new ProcessorDataObj(), logger);
+            fileRepo.CheckFileExistsWithCreateJsonZObject("MonitorIPs", new List<MonitorIP>(), logger);
+            fileRepo.CheckFileExistsWithCreateJsonZObject("PingParams", new PingParams
             {
-                fileRepo = new FileRepo(true, "./state");
-                if (!File.Exists("./state/ProcessorDataObj"))
-                {
-                    File.Create("./state/ProcessorDataObj").Close();
-                    fileRepo.SaveStateStringJsonZ<ProcessorDataObj>("ProcessorDataObj", new ProcessorDataObj());
-                }
-                if (!File.Exists("./state/MonitorIPs"))
-                {
-                    File.Create("./state/MonitorIPs").Close();
-                    fileRepo.SaveStateJsonZ<List<MonitorIP>>("MonitorIPs", new List<MonitorIP>());
+                Timeout = 59000,
+                AlertThreshold = 4,
+                HostLimit = 10
+            }, logger);
 
-                }
-                if (!File.Exists("./state/PingParams"))
-                {
-                    File.Create("./state/PingParams").Close();
-                    fileRepo.SaveStateJsonZ<PingParams>("PingParams", new PingParams());
-
-                }
-            }
-            else
-            {
-                fileRepo = new FileRepo();
-                if (!File.Exists("ProcessorDataObj"))
-                {
-                    File.Create("ProcessorDataObj").Close();
-                    fileRepo.SaveStateJsonZ<ProcessorDataObj>("ProcessorDataObj", new ProcessorDataObj());
-                }
-                if (!File.Exists("MonitorIPs"))
-                {
-                    File.Create("MonitorIPs").Close();
-                    fileRepo.SaveStateJsonZ<List<MonitorIP>>("MonitorIPs", new List<MonitorIP>());
-
-                }
-                if (!File.Exists("PingParams"))
-                {
-                    File.Create("PingParams").Close();
-                    fileRepo.SaveStateJsonZ<PingParams>("PingParams", new PingParams());
-
-                }
-            }
             var processorStates = new LocalProcessorStates();
             IRabbitRepo rabbitRepo = new RabbitRepo(loggerFactory.CreateLogger<RabbitRepo>(), netConfig);
             var resultRabbitRepo = await rabbitRepo.ConnectAndSetUp();
