@@ -1,6 +1,7 @@
 # Debian 13 (trixie) runtime only
 FROM debian:trixie-slim
 
+ENV DOTNET_RUNNING_IN_CONTAINER=true
 # Create fixed UID/GID runtime user
 RUN groupadd -g 1654 appuser && \
     useradd -u 1654 -g 1654 -M -s /usr/sbin/nologin appuser
