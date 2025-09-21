@@ -2,6 +2,10 @@
 # portable strict mode: dash-compatible; pipefail only if supported
 set -eu
 ( set -o pipefail ) 2>/dev/null && set -o pipefail
+# Load the project root
+. ./files_dir
+: "${FILES_DIR:?FILES_DIR not set in files_dir}"
+
 
 # Always show full build logs
 export DOCKER_BUILDKIT=1
@@ -53,7 +57,7 @@ cp -a "$PUBLISH_DIR/." "$STAGING_DIR/"
 docker build --progress=plain -f "$DOCKERFILE" -t "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG" . 2>&1 | tee "$LOG_DIR/base.build.log"
 
 # --- run via compose ---
-docker compose -f "$DOCKER_COMPOSE_FILE" up -d
+docker compose --project-directory $FILES_DIR --env-file "$FILES_DIR/db-only-env" -f "$DOCKER_COMPOSE_FILE" up -d
 
 docker push "$DOCKER_IMAGE_NAME:$DOCKER_IMAGE_TAG"  # Push the "tag" tag
 
