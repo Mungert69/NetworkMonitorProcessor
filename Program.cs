@@ -31,7 +31,6 @@ namespace NetworkMonitor.Processor
 
             if (File.Exists(stateDirAppSettings))
             {
-                // Use the appsettings.json from the state directory
                 config = new ConfigurationBuilder()
                     .AddJsonFile(stateDirAppSettings, optional: false, reloadOnChange: false)
                     .AddEnvironmentVariables()
@@ -40,7 +39,6 @@ namespace NetworkMonitor.Processor
             }
             else
             {
-                // Use the default appsettings.json
                 config = new ConfigurationBuilder()
                     .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
                     .AddEnvironmentVariables()
@@ -48,39 +46,35 @@ namespace NetworkMonitor.Processor
                     .Build();
             }
 
-
-
             string appDataDirectory;
-
             if (Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true")
             {
-                // Set your custom directory for the Docker environment
                 appDataDirectory = "";
             }
             else
             {
-                // Fallback to the regular path on non-containerized environments
                 appDataDirectory = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             }
 
             var netConfig = new NetConnectConfig(config, appDataDirectory);
+
             using var loggerFactory = LoggerFactory.Create(builder =>
-                  {
-                      builder
-                            .AddFilter("Microsoft", LogLevel.Information)  // Log only warnings from Microsoft namespaces
-                            .AddFilter("System", LogLevel.Information)     // Log only warnings from System namespaces
-                            .AddFilter("Program", LogLevel.Debug)      // Log all messages from Program class
-                                                                       //.AddFilter("NetworkMonitor.Connection", LogLevel.Debug)
-                            .AddSimpleConsole(options =>
-                        {
-                            options.TimestampFormat = "yyyy-MM-dd HH:mm:ss ";
-                            options.IncludeScopes = true;
-                        });
-                  });
-            var logger = loggerFactory.CreateLogger<Program>();
+            {
+                builder
+                    .AddFilter("Microsoft", LogLevel.Information)
+                    .AddFilter("System", LogLevel.Information)
+                    .AddFilter("Program", LogLevel.Debug)
+                    .AddSimpleConsole(options =>
+                    {
+                        options.TimestampFormat = "yyyy-MM-dd HH:mm:ss ";
+                        options.IncludeScopes = true;
+                    });
+            });
+
+            var logger   = loggerFactory.CreateLogger<Program>();
             var fileRepo = new FileRepo(true, "./state");
 
-            // Seed defaults if missing. (These do not overwrite non-empty files.)
+            // Seed default state
             fileRepo.CheckFileExistsWithCreateStringJsonZObject("ProcessorDataObj", new ProcessorDataObj(), logger);
             fileRepo.CheckFileExistsWithCreateJsonZObject("MonitorIPs", new List<MonitorIP>(), logger);
             fileRepo.CheckFileExistsWithCreateJsonZObject("PingParams", new PingParams
@@ -91,59 +85,95 @@ namespace NetworkMonitor.Processor
             }, logger);
 
             var processorStates = new LocalProcessorStates();
+
             IRabbitRepo rabbitRepo = new RabbitRepo(loggerFactory.CreateLogger<RabbitRepo>(), netConfig);
             var resultRabbitRepo = await rabbitRepo.ConnectAndSetUp();
-            if (resultRabbitRepo.Success)
-            {
-                logger.LogInformation(resultRabbitRepo.Message);
-            }
-            else
+            if (!resultRabbitRepo.Success)
             {
                 logger.LogError(resultRabbitRepo.Message);
                 return;
             }
+            logger.LogInformation(resultRabbitRepo.Message);
+
+            // --- Web automation singletons ---
             ILaunchHelper launchHelper = new LaunchHelper();
-            _cmdProcessorProvider = new CmdProcessorProvider(loggerFactory, rabbitRepo, netConfig, launchHelper);
+
+            // NEW: one BrowserHost for the whole process
+            IBrowserHost browserHost = new BrowserHost(
+                launchHelper,
+                netConfig,
+                loggerFactory.CreateLogger<BrowserHost>()
+            );
+            // ---------------------------------
+
+             _cmdProcessorProvider = new CmdProcessorProvider(
+                loggerFactory,
+                rabbitRepo,
+                netConfig,
+                browserHost
+            );
             var resultCmdProcessorProvider = await _cmdProcessorProvider.Setup();
 
-            _connectFactory = new NetworkMonitor.Connection.ConnectFactory(loggerFactory.CreateLogger<ConnectFactory>(), netConfig: netConfig, cmdProcessorProvider: _cmdProcessorProvider, launchHelper: launchHelper);
+            // ConnectFactory (keep as-is unless you updated its ctor to also accept IBrowserHost)
+            _connectFactory = new NetworkMonitor.Connection.ConnectFactory(
+                loggerFactory.CreateLogger<ConnectFactory>(),
+                netConfig: netConfig,
+                cmdProcessorProvider: _cmdProcessorProvider,
+                 browserHost: browserHost
+            );
+
             _ = _connectFactory.SetupChromium(netConfig);
-            //ISystemParamsHelper systemParamsHelper = new SystemParamsHelper(config, loggerFactory.CreateLogger<SystemParamsHelper>());
-            // _connectFactory = new NetworkMonitor.Connection.ConnectFactory(loggerFactory.CreateLogger<ConnectFactory>(), oqsProviderPath: netConfig.OqsProviderPath);
-            _monitorPingProcessor = new MonitorPingProcessor(loggerFactory.CreateLogger<MonitorPingProcessor>(), netConfig, _connectFactory, fileRepo, rabbitRepo, processorStates);
-            IRabbitListener rabbitListener = new RabbitListener(_monitorPingProcessor, loggerFactory.CreateLogger<RabbitListener>(), netConfig, processorStates, _cmdProcessorProvider);
-            AuthService authService;
+
+            _monitorPingProcessor = new MonitorPingProcessor(
+                loggerFactory.CreateLogger<MonitorPingProcessor>(),
+                netConfig,
+                _connectFactory,
+                fileRepo,
+                rabbitRepo,
+                processorStates
+            );
+
+            IRabbitListener rabbitListener = new RabbitListener(
+                _monitorPingProcessor,
+                loggerFactory.CreateLogger<RabbitListener>(),
+                netConfig,
+                processorStates,
+                _cmdProcessorProvider
+            );
+
             var resultListener = await rabbitListener.Setup();
-            if (resultListener.Success)
-            {
-                logger.LogInformation(resultListener.Message);
-            }
-            else
+            if (!resultListener.Success)
             {
                 logger.LogError(resultListener.Message);
                 return;
             }
+            logger.LogInformation(resultListener.Message);
+
             var result = await _monitorPingProcessor.Init(new ProcessorInitObj());
-            if (result.Success)
-            {
-                logger.LogInformation(result.Message);
-            }
-            else
+            if (!result.Success)
             {
                 logger.LogError(result.Message);
                 return;
             }
+            logger.LogInformation(result.Message);
+
             processorStates.IsSetup = result.Success;
+
             if (config["AuthDevice"] == "true")
             {
-                authService = new AuthService(loggerFactory.CreateLogger<AuthService>(), netConfig, rabbitRepo, processorStates);
+                var authService = new AuthService(
+                    loggerFactory.CreateLogger<AuthService>(),
+                    netConfig,
+                    rabbitRepo,
+                    processorStates
+                );
                 await authService.InitializeAsync();
                 await authService.SendAuthRequestAsync();
                 await authService.PollForTokenAsync();
             }
 
-
             await Task.Delay(-1);
+
 #if !ANDROID
             Console.CancelKeyPress += async (o, e) =>
             {
@@ -153,6 +183,4 @@ namespace NetworkMonitor.Processor
 #endif
         }
     }
-
-
 }
