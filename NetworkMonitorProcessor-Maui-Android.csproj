@@ -20,19 +20,19 @@
 
 
   <ItemGroup>
-     <PackageReference Include="Microsoft.Extensions.Configuration.CommandLine" Version="9.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.8" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.8" />
+     <PackageReference Include="Microsoft.Extensions.Configuration.CommandLine" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.9" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.9" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NetworkMonitorLib\NetworkMonitor-Maui-Android.csproj" />
   </ItemGroup>
-  <ItemGroup >
+  <ItemGroup>
     <AndroidNativeLibrary Remove="docker-context/**" />
-    <Content              Remove="docker-context/**" />
-    <None                 Remove="docker-context/**" />
-    <MauiAsset            Remove="docker-context/**" />
+    <Content Remove="docker-context/**" />
+    <None Remove="docker-context/**" />
+    <MauiAsset Remove="docker-context/**" />
   </ItemGroup>
    
 </Project>
