@@ -8,6 +8,13 @@ RUN groupadd -g 1654 appuser && \
 RUN mkdir -p /home/appuser && chown -R appuser:appuser /home/appuser
 ENV HOME=/home/appuser
 
+# ---- Parameters (overridable at build) ----
+# Which Debian feed to use for Microsoft's repo (stick to 12 while 13 isn't populated)
+ARG DOTNET_DEBIAN_FEED=12
+# Which .NET runtime package to install (aspnetcore runtime includes Microsoft.AspNetCore.App)
+ARG DOTNET_PACKAGE=dotnet-runtime-9.0
+
+
 # OS deps: .NET runtime + Chromium/Puppeteer shared libs + xvfb + xauth + bash
 RUN set -eux; \
     apt-get update; \
@@ -57,12 +64,13 @@ RUN set -eux; \
         xvfb \
         xauth \
     ; \
-    # .NET runtime (Debian 12 feed per your original)
-    wget https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb; \
+    # Microsoft repo (explicitly use Debian ${DOTNET_DEBIAN_FEED})
+    wget https://packages.microsoft.com/config/debian/${DOTNET_DEBIAN_FEED}/packages-microsoft-prod.deb -O /tmp/packages-microsoft-prod.deb; \
     dpkg -i /tmp/packages-microsoft-prod.deb; \
     rm /tmp/packages-microsoft-prod.deb; \
     apt-get update; \
-    apt-get install -y --no-install-recommends dotnet-runtime-9.0; \
+    # Install the chosen .NET runtime package (default: aspnetcore-runtime-9.0)
+    apt-get install -y --no-install-recommends ${DOTNET_PACKAGE}; \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
