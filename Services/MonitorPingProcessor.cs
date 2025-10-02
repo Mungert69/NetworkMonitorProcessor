@@ -241,8 +241,11 @@ namespace NetworkMonitor.Processor.Services
                 _netConfig.AgentUserFlow.IsLoggedInWebsite = false;
                 _netConfig.AgentUserFlow.IsHostsAdded = false;
                 _netConfig.AgentUserFlow.IsChatOpened = false;
-
                 await _protectedConfigManager.PersistAsync(ProtectedConfigurationParameters.AuthKey, _netConfig, processorInitObj.AuthKey);
+                await _protectedConfigManager.PersistAsync(ProtectedConfigurationParameters.RabbitPassword, _netConfig, _netConfig.RabbitPassword);
+
+
+                await SaveNetConfigAsync();
                 await _netConfig.AuthComplete();
 
                 result.Success = true;
@@ -314,6 +317,7 @@ namespace NetworkMonitor.Processor.Services
             try
             {
                 _netConfig.OqsProviderPath = _netConfig.OqsProviderPathReadOnly;
+
                 await _protectedConfigManager.SaveConfigurationAsync(_netConfig, _protectedParameters);
             }
             finally
@@ -463,6 +467,21 @@ namespace NetworkMonitor.Processor.Services
                 result.Success = false;
                 _logger.LogError(" Error : Could not set MonitorPingInfoView . Error was : {Error}", e);
             }
+
+            try
+            {
+                await _protectedConfigManager.PersistAsync(ProtectedConfigurationParameters.AuthKey, _netConfig, _netConfig.AuthKey);
+                await _protectedConfigManager.PersistAsync(ProtectedConfigurationParameters.RabbitPassword, _netConfig, _netConfig.RabbitPassword);
+
+                await SaveNetConfigAsync();
+                result.Message += " Success : Saved netconfig with protected parameters . ";
+            }
+            catch (Exception e)
+            {
+                result.Success = false;
+                _logger.LogError(" Error : Could not save protected configuration parameters . Error was : {Error}", e);
+            }
+
 
             _processorStates.IsSetup = result.Success;
             if (result.Success) result.Message += " Success : Setup completed ";

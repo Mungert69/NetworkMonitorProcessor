@@ -60,7 +60,7 @@ namespace NetworkMonitor.Processor
                     });
             });
 
-            var logger   = loggerFactory.CreateLogger<Program>();
+            var logger = loggerFactory.CreateLogger<Program>();
             var envPath = config["EnvPath"];
             if (string.IsNullOrWhiteSpace(envPath))
             {
@@ -83,9 +83,8 @@ namespace NetworkMonitor.Processor
 
             var netConfig = new NetConnectConfig(config, appDataDirectory);
             var fileRepo = new FileRepo(true, "./state");
-            var protectedConfigManager = new ProtectedConfigManager(envStore, fileRepo, loggerFactory.CreateLogger<ProtectedConfigManager>());
+            var protectedConfigManager = new ProtectedConfigManager(config, envStore, fileRepo, loggerFactory.CreateLogger<ProtectedConfigManager>());
 
-            await protectedConfigManager.MigrateAsync(config, netConfig, ProtectedConfigurationParameters.All);
 
             // Seed default state
             fileRepo.CheckFileExistsWithCreateStringJsonZObject("ProcessorDataObj", new ProcessorDataObj(), logger);
@@ -119,12 +118,12 @@ namespace NetworkMonitor.Processor
             );
             // ---------------------------------
 
-             _cmdProcessorProvider = new CmdProcessorProvider(
-                loggerFactory,
-                rabbitRepo,
-                netConfig,
-                browserHost
-            );
+            _cmdProcessorProvider = new CmdProcessorProvider(
+               loggerFactory,
+               rabbitRepo,
+               netConfig,
+               browserHost
+           );
             var resultCmdProcessorProvider = await _cmdProcessorProvider.Setup();
 
             // ConnectFactory (keep as-is unless you updated its ctor to also accept IBrowserHost)
