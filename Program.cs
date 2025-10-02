@@ -12,6 +12,7 @@ using NetworkMonitor.Objects;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Collections.Generic;
+using NetworkMonitor.Objects.Security;
 
 namespace NetworkMonitor.Processor
 {
@@ -46,18 +47,6 @@ namespace NetworkMonitor.Processor
                     .Build();
             }
 
-            string appDataDirectory;
-            if (Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true")
-            {
-                appDataDirectory = "";
-            }
-            else
-            {
-                appDataDirectory = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            }
-
-            var netConfig = new NetConnectConfig(config, appDataDirectory);
-
             using var loggerFactory = LoggerFactory.Create(builder =>
             {
                 builder
@@ -72,7 +61,31 @@ namespace NetworkMonitor.Processor
             });
 
             var logger   = loggerFactory.CreateLogger<Program>();
+            var envPath = config["EnvPath"];
+            if (string.IsNullOrWhiteSpace(envPath))
+            {
+                envPath = Path.Combine("./state", ".env");
+            }
+
+            var envStore = new EnvFileStore(envPath, loggerFactory.CreateLogger<EnvFileStore>());
+            envStore.LoadIntoProcess();
+            GetConfigHelper.Initialize(config, loggerFactory.CreateLogger<GetConfigHelper>());
+
+            string appDataDirectory;
+            if (Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true")
+            {
+                appDataDirectory = "";
+            }
+            else
+            {
+                appDataDirectory = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            }
+
+            var netConfig = new NetConnectConfig(config, appDataDirectory);
             var fileRepo = new FileRepo(true, "./state");
+            var protectedConfigManager = new ProtectedConfigManager(envStore, fileRepo, loggerFactory.CreateLogger<ProtectedConfigManager>());
+
+            await protectedConfigManager.MigrateAsync(config, netConfig, ProtectedConfigurationParameters.All);
 
             // Seed default state
             fileRepo.CheckFileExistsWithCreateStringJsonZObject("ProcessorDataObj", new ProcessorDataObj(), logger);
@@ -130,7 +143,8 @@ namespace NetworkMonitor.Processor
                 _connectFactory,
                 fileRepo,
                 rabbitRepo,
-                processorStates
+                processorStates,
+                protectedConfigManager
             );
 
             IRabbitListener rabbitListener = new RabbitListener(
@@ -182,5 +196,6 @@ namespace NetworkMonitor.Processor
             };
 #endif
         }
+
     }
 }

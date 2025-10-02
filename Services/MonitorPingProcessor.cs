@@ -14,6 +14,7 @@ using System.Threading;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
+using NetworkMonitor.Objects.Security;
 
 namespace NetworkMonitor.Processor.Services
 {
@@ -32,6 +33,8 @@ namespace NetworkMonitor.Processor.Services
         private uint _piIDKey = 1;
         private readonly IRabbitRepo _rabbitRepo;
         private readonly IFileRepo _fileRepo;
+        private readonly IProtectedConfigManager _protectedConfigManager;
+        private readonly IReadOnlyList<ProtectedParameter> _protectedParameters;
 
         public string AppID => _netConfig.AppID;
 
@@ -42,11 +45,15 @@ namespace NetworkMonitor.Processor.Services
             IFileRepo fileRepo,
             IRabbitRepo rabbitRepo,
             LocalProcessorStates processorStates,
-            IMonitorPingInfoView? monitorPingInfoView = null)
+            IProtectedConfigManager protectedConfigManager,
+            IMonitorPingInfoView? monitorPingInfoView = null,
+            IReadOnlyList<ProtectedParameter>? protectedParameters = null)
         {
             _logger = logger;
             _fileRepo = fileRepo;
             _rabbitRepo = rabbitRepo;
+            _protectedConfigManager = protectedConfigManager;
+            _protectedParameters = protectedParameters ?? ProtectedConfigurationParameters.All;
             _netConfig = netConfig;
             _netConfig.OnAppIDChangedAsync += HandleAppIDChangedAsync;
 
@@ -219,6 +226,14 @@ namespace NetworkMonitor.Processor.Services
         public async Task<ResultObj> SetAuthKey(ProcessorInitObj processorInitObj)
         {
             var result = new ResultObj { Message = " SetAuthKey : " };
+            if (string.IsNullOrWhiteSpace(processorInitObj.AuthKey))
+            {
+                result.Success = false;
+                result.Message += " Error : AuthKey was null or empty.";
+                _logger.LogError(result.Message);
+                return result;
+            }
+
             try
             {
                 _netConfig.AuthKey = processorInitObj.AuthKey;
@@ -227,31 +242,30 @@ namespace NetworkMonitor.Processor.Services
                 _netConfig.AgentUserFlow.IsHostsAdded = false;
                 _netConfig.AgentUserFlow.IsChatOpened = false;
 
-                _fileRepo.CheckFileExists("appsettings.json", _logger);
-                var copy = _netConfig.OqsProviderPath;
-                _netConfig.OqsProviderPath = _netConfig.OqsProviderPathReadOnly;
-                await _fileRepo.SaveStateJsonAsync("appsettings.json", _netConfig);
-                _netConfig.OqsProviderPath = copy;
-
+                await _protectedConfigManager.PersistAsync(ProtectedConfigurationParameters.AuthKey, _netConfig, processorInitObj.AuthKey);
                 await _netConfig.AuthComplete();
-                result.Message += " Success : Set AuthKey and saved NetConnectConfig to appsettings.json.";
+
+                result.Success = true;
+                result.Message += " Success : Stored AuthKey to environment and config.";
             }
             catch (Exception e)
             {
                 result.Success = false;
-                result.Message += $" Error : Could not save NetConnectConfig to appsettings.json . Error was {e.Message}";
+                result.Message += $" Error : Could not persist AuthKey . Error was {e.Message}";
+                _logger.LogError(result.Message);
+                return result;
             }
 
             try
             {
                 await Init(processorInitObj);
-                result.Success = true;
                 result.Message += " Success : Ran Processor Init after Setting AuthKey.";
             }
             catch (Exception e)
             {
                 result.Success = false;
                 result.Message += $" Error : Could  run Processor Init . Error was {e.Message}";
+                _logger.LogError(result.Message);
             }
             return result;
         }
@@ -287,14 +301,25 @@ namespace NetworkMonitor.Processor.Services
 
             if (isValueChanged)
             {
-                var copy = _netConfig.OqsProviderPath;
-                _netConfig.OqsProviderPath = _netConfig.OqsProviderPathReadOnly;
-                _fileRepo.CheckFileExists("appsettings.json", _logger);
-                await _fileRepo.SaveStateJsonAsync("appsettings.json", _netConfig);
-                _netConfig.OqsProviderPath = copy;
+                await SaveNetConfigAsync();
             }
 
             return result;
+        }
+
+        private async Task SaveNetConfigAsync()
+        {
+            var originalOqsPath = _netConfig.OqsProviderPath;
+
+            try
+            {
+                _netConfig.OqsProviderPath = _netConfig.OqsProviderPathReadOnly;
+                await _protectedConfigManager.SaveConfigurationAsync(_netConfig, _protectedParameters);
+            }
+            finally
+            {
+                _netConfig.OqsProviderPath = originalOqsPath;
+            }
         }
 
         /// <summary>

@@ -11,6 +11,7 @@ using NetworkMonitor.Connection;
 using NetworkMonitor.DTOs;
 using NetworkMonitor.Processor.Services;
 using NetworkMonitor.Objects.ServiceMessage; // <-- Add this for ProcessorInitObj
+using NetworkMonitor.Objects.Security;
 using Xunit;
 
 public class MonitorPingProcessorTest
@@ -57,11 +58,13 @@ public class MonitorPingProcessorTest
         out Mock<ILogger> loggerMock,
         out Mock<IFileRepo> fileRepoMock,
         out Mock<IRabbitRepo> rabbitRepoMock,
+        out Mock<IProtectedConfigManager> protectedConfigManagerMock,
         out NetConnectConfig config)
     {
         loggerMock = new Mock<ILogger>();
         fileRepoMock = new Mock<IFileRepo>();
         rabbitRepoMock = new Mock<IRabbitRepo>();
+        protectedConfigManagerMock = new Mock<IProtectedConfigManager>();
         config = new NetConnectConfig(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), "TestSection");
         typeof(NetConnectConfig).GetField("_appID", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
             ?.SetValue(config, "test-app");
@@ -75,14 +78,15 @@ public class MonitorPingProcessorTest
             connectFactory,
             fileRepoMock.Object,
             rabbitRepoMock.Object,
-            processorStates
+            processorStates,
+            protectedConfigManagerMock.Object
         );
     }
 
     [Fact]
     public async Task OnStoppingAsync_SetsProcessorStatesAndCallsRepos()
     {
-        var processor = CreateProcessor(out var loggerMock, out var fileRepoMock, out var rabbitRepoMock, out var config);
+        var processor = CreateProcessor(out var loggerMock, out var fileRepoMock, out var rabbitRepoMock, out var protectedConfigManagerMock, out var config);
 
         fileRepoMock.Setup(f => f.ShutdownAsync()).Returns(Task.CompletedTask);
         rabbitRepoMock.Setup(r => r.Shutdown());
@@ -107,41 +111,45 @@ public class MonitorPingProcessorTest
     [Fact]
     public async Task SetAuthKey_SetsAuthKeyAndCallsInit()
     {
-        var processor = CreateProcessor(out var loggerMock, out var fileRepoMock, out var rabbitRepoMock, out var config);
+        var processor = CreateProcessor(out var loggerMock, out var fileRepoMock, out var rabbitRepoMock, out var protectedConfigManagerMock, out var config);
         var initObj = new ProcessorInitObj { AuthKey = "mykey" };
 
         fileRepoMock.Setup(f => f.CheckFileExists(It.IsAny<string>(), It.IsAny<ILogger>()));
-        fileRepoMock.Setup(f => f.SaveStateJsonAsync<NetConnectConfig>(It.IsAny<string>(), It.IsAny<NetConnectConfig>()))
-            .Returns(Task.CompletedTask);
+        protectedConfigManagerMock.Setup(m => m.PersistAsync(ProtectedConfigurationParameters.AuthKey, config, "mykey", It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask)
+            .Verifiable();
 
         var result = await processor.SetAuthKey(initObj);
 
         Assert.True(config.AgentUserFlow.IsAuthorized);
         Assert.Equal("mykey", config.AuthKey);
         Assert.Contains("Success", result.Message);
+        protectedConfigManagerMock.Verify();
     }
 
     [Fact]
     public async Task ProcessorUserEvent_UpdatesAgentUserFlow()
     {
-        var processor = CreateProcessor(out var loggerMock, out var fileRepoMock, out var rabbitRepoMock, out var config);
+        var processor = CreateProcessor(out var loggerMock, out var fileRepoMock, out var rabbitRepoMock, out var protectedConfigManagerMock, out var config);
         var userEvent = new ProcessorUserEventObj { IsLoggedInWebsite = true, IsHostsAdded = true };
 
         fileRepoMock.Setup(f => f.CheckFileExists(It.IsAny<string>(), It.IsAny<ILogger>()));
-        fileRepoMock.Setup(f => f.SaveStateJsonAsync<NetConnectConfig>(It.IsAny<string>(), It.IsAny<NetConnectConfig>()))
-            .Returns(Task.CompletedTask);
+        protectedConfigManagerMock.Setup(m => m.SaveConfigurationAsync(config, ProtectedConfigurationParameters.All, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask)
+            .Verifiable();
 
         var result = await processor.ProcessorUserEvent(userEvent);
 
         Assert.True(config.AgentUserFlow.IsLoggedInWebsite);
         Assert.True(config.AgentUserFlow.IsHostsAdded);
         Assert.Contains("Success", result.Message);
+        protectedConfigManagerMock.Verify();
     }
 
     [Fact]
     public async Task WakeUp_ReturnsSuccessIfSetupAndNotRunning()
     {
-        var processor = CreateProcessor(out var loggerMock, out var fileRepoMock, out var rabbitRepoMock, out var config);
+        var processor = CreateProcessor(out var loggerMock, out var fileRepoMock, out var rabbitRepoMock, out var protectedConfigManagerMock, out var config);
         // Simulate setup complete and not running
         var statesField = typeof(MonitorPingProcessor)
             .GetField("_processorStates", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
@@ -159,7 +167,7 @@ public class MonitorPingProcessorTest
     [Fact]
     public async Task WakeUp_ReturnsWarningIfNotSetupOrRunning()
     {
-        var processor = CreateProcessor(out var loggerMock, out var fileRepoMock, out var rabbitRepoMock, out var config);
+        var processor = CreateProcessor(out var loggerMock, out var fileRepoMock, out var rabbitRepoMock, out var protectedConfigManagerMock, out var config);
         var statesField = typeof(MonitorPingProcessor)
             .GetField("_processorStates", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
         Assert.NotNull(statesField);
@@ -183,7 +191,7 @@ public class MonitorPingProcessorTest
     public async Task ResetAlerts_ForSiteHash_ResetsSiteHashInBothMonitorPingInfoAndNetConnect()
     {
         // Arrange
-        var processor = CreateProcessor(out var loggerMock, out var fileRepoMock, out var rabbitRepoMock, out var config);
+        var processor = CreateProcessor(out var loggerMock, out var fileRepoMock, out var rabbitRepoMock, out var envStoreMock, out var config);
 
         // Create a MonitorPingInfo and add it to the processor using only public APIs
         var monitorPingInfo = new MonitorPingInfo
