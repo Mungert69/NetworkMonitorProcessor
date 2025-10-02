@@ -11,7 +11,7 @@ using NetworkMonitor.Connection;
 using NetworkMonitor.DTOs;
 using NetworkMonitor.Processor.Services;
 using NetworkMonitor.Objects.ServiceMessage; // <-- Add this for ProcessorInitObj
-using NetworkMonitor.Objects.Security;
+using NetworkMonitor.Security;
 using Xunit;
 
 public class MonitorPingProcessorTest

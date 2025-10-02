@@ -12,7 +12,7 @@ using NetworkMonitor.Objects;
 using Microsoft.Extensions.Logging;
 using System.Diagnostics;
 using System.Collections.Generic;
-using NetworkMonitor.Objects.Security;
+using NetworkMonitor.Security;
 
 namespace NetworkMonitor.Processor
 {

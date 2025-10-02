@@ -14,7 +14,7 @@ using System.Threading;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
-using NetworkMonitor.Objects.Security;
+using NetworkMonitor.Security;
 
 namespace NetworkMonitor.Processor.Services
 {
