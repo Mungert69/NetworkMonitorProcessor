@@ -69,7 +69,7 @@ namespace NetworkMonitor.Processor
 
             var envStore = new EnvFileStore(envPath, loggerFactory.CreateLogger<EnvFileStore>());
             envStore.LoadIntoProcess();
-            GetConfigHelper.Initialize(config, loggerFactory.CreateLogger<GetConfigHelper>());
+           // GetConfigHelper.Initialize(config, loggerFactory.CreateLogger<GetConfigHelper>());
 
             string appDataDirectory;
             if (Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true")
