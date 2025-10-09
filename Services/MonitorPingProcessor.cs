@@ -334,6 +334,17 @@ namespace NetworkMonitor.Processor.Services
             _processorStates.IsSetup = false;
             var result = new ResultObj { Message = " Init : ", Success = true };
 
+            try
+            {
+                await _protectedConfigManager
+                    .SynchronizeSensitiveValuesAsync(_netConfig, _protectedParameters)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to synchronize sensitive configuration values before initialization.");
+            }
+
             var stateSetup = new StateSetup(_logger, _monitorPingCollection, _lock, _fileRepo);
             _removeMonitorPingInfoIDs = new List<int>();
             var initNetConnects = false;

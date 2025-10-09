@@ -65,6 +65,12 @@ public class MonitorPingProcessorTest
         fileRepoMock = new Mock<IFileRepo>();
         rabbitRepoMock = new Mock<IRabbitRepo>();
         protectedConfigManagerMock = new Mock<IProtectedConfigManager>();
+        protectedConfigManagerMock
+            .Setup(m => m.SynchronizeSensitiveValuesAsync(
+                It.IsAny<NetConnectConfig>(),
+                It.IsAny<IEnumerable<ProtectedParameter>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         config = new NetConnectConfig(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(), "TestSection");
         typeof(NetConnectConfig).GetField("_appID", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
             ?.SetValue(config, "test-app");

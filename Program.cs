@@ -84,6 +84,7 @@ namespace NetworkMonitor.Processor
             var netConfig = new NetConnectConfig(config, appDataDirectory);
             var fileRepo = new FileRepo(true, "./state");
             var protectedConfigManager = new ProtectedConfigManager(config, envStore, fileRepo, loggerFactory.CreateLogger<ProtectedConfigManager>());
+            await protectedConfigManager.SynchronizeSensitiveValuesAsync(netConfig, ProtectedConfigurationParameters.All).ConfigureAwait(false);
 
 
             // Seed default state
