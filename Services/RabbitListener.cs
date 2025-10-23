@@ -37,7 +37,7 @@ namespace NetworkMonitor.Objects.Repository
         private TimeSpan _pollingInterval = TimeSpan.FromMinutes(1);
 
 
-        public RabbitListener(IMonitorPingProcessor monitorPingProcessor, ILogger logger, NetConnectConfig netConnectConfig, LocalProcessorStates localProcessorStates, ICmdProcessorProvider cmdProcessorProvider) : base(logger, DeriveSystemUrl(netConnectConfig), localProcessorStates as IRabbitListenerState, netConnectConfig.UseTls)
+        public RabbitListener(IMonitorPingProcessor monitorPingProcessor, ILogger logger, NetConnectConfig netConnectConfig, LocalProcessorStates localProcessorStates, ICmdProcessorProvider cmdProcessorProvider) : base(logger, DeriveSystemUrl(netConnectConfig), localProcessorStates as IRabbitListenerState)
         {
             _monitorPingProcessor = monitorPingProcessor;
             _cmdProcessorProvider = cmdProcessorProvider;
