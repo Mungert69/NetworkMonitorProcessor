@@ -415,17 +415,26 @@ namespace NetworkMonitor.Processor.Services
                             return result;
                         }
                         await _netConfig.SetAppIDAsync(processorObj.AppID);
+                        var currentSystemUrl = _netConfig.LocalSystemUrl;
                         var updatedSystemUrl = new SystemUrl
                         {
                             ExternalUrl = $"{machineName}.local",
-                            IPAddress = _netConfig.LocalSystemUrl.IPAddress,
-                            RabbitHostName = _netConfig.LocalSystemUrl.RabbitHostName,
-                            RabbitPort = _netConfig.LocalSystemUrl.RabbitPort,
+                            IPAddress = currentSystemUrl.IPAddress,
+                            RabbitHostName = currentSystemUrl.RabbitHostName,
+                            RabbitPort = currentSystemUrl.RabbitPort,
                             RabbitInstanceName = $"monitorProcessor{newAppID}",
                             RabbitUserName = userInfo.UserID,
                             RabbitPassword = accessToken,
-                            RabbitVHost = _netConfig.LocalSystemUrl.RabbitVHost,
-                            UseTls=true
+                            RabbitVHost = currentSystemUrl.RabbitVHost,
+                            UseTls = true,
+                            MaxLoad = currentSystemUrl.MaxLoad,
+                            MaxRuntime = currentSystemUrl.MaxRuntime,
+                            Country = currentSystemUrl.Country,
+                            Region = currentSystemUrl.Region,
+                            AndroidVersion = currentSystemUrl.AndroidVersion,
+                            AndroidSdkLevel = currentSystemUrl.AndroidSdkLevel,
+                            LegacyAndroidRootCertPath = currentSystemUrl.LegacyAndroidRootCertPath,
+                            LegacyIntermediateUrl = currentSystemUrl.LegacyIntermediateUrl
                         };
                         await _netConfig.SetLocalSystemUrlAsync(updatedSystemUrl);
                         //await Task.Delay(TimeSpan.FromSeconds(3)); 
