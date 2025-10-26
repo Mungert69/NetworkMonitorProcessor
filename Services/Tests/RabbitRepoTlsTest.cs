@@ -99,7 +99,7 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
             var sslOption = InvokeBuildSslOption(repo);
 
             Assert.True(sslOption.Enabled);
-            Assert.Equal(SslPolicyErrors.RemoteCertificateChainErrors, sslOption.AcceptablePolicyErrors);
+            Assert.Equal(SslPolicyErrors.None, sslOption.AcceptablePolicyErrors);
             Assert.NotNull(sslOption.CertificateValidationCallback);
         }
 
