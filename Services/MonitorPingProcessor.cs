@@ -34,6 +34,7 @@ namespace NetworkMonitor.Processor.Services
         private readonly IRabbitRepo _rabbitRepo;
         private readonly IFileRepo _fileRepo;
         private readonly IProtectedConfigManager _protectedConfigManager;
+        private readonly SemaphoreSlim _configPersistenceLock = new(1, 1);
         private readonly IReadOnlyList<ProtectedParameter> _protectedParameters;
 
         public string AppID => _netConfig.AppID;
@@ -241,11 +242,14 @@ namespace NetworkMonitor.Processor.Services
                 _netConfig.AgentUserFlow.IsLoggedInWebsite = false;
                 _netConfig.AgentUserFlow.IsHostsAdded = false;
                 _netConfig.AgentUserFlow.IsChatOpened = false;
-                await _protectedConfigManager.PersistAsync(ProtectedConfigurationParameters.AuthKey, _netConfig, processorInitObj.AuthKey);
-                await _protectedConfigManager.PersistAsync(ProtectedConfigurationParameters.RabbitPassword, _netConfig, _netConfig.RabbitPassword);
 
+                await WithConfigPersistenceLock(async () =>
+                {
+                    await _protectedConfigManager.PersistAsync(ProtectedConfigurationParameters.AuthKey, _netConfig, processorInitObj.AuthKey);
+                    await _protectedConfigManager.PersistAsync(ProtectedConfigurationParameters.RabbitPassword, _netConfig, _netConfig.RabbitPassword);
+                    await SaveNetConfigCoreAsync();
+                });
 
-                await SaveNetConfigAsync();
                 await _netConfig.AuthComplete();
 
                 result.Success = true;
@@ -310,7 +314,10 @@ namespace NetworkMonitor.Processor.Services
             return result;
         }
 
-        private async Task SaveNetConfigAsync()
+        private Task SaveNetConfigAsync()
+            => WithConfigPersistenceLock(SaveNetConfigCoreAsync);
+
+        private async Task SaveNetConfigCoreAsync()
         {
             var originalOqsPath = _netConfig.OqsProviderPath;
 
@@ -323,6 +330,19 @@ namespace NetworkMonitor.Processor.Services
             finally
             {
                 _netConfig.OqsProviderPath = originalOqsPath;
+            }
+        }
+
+        private async Task WithConfigPersistenceLock(Func<Task> action)
+        {
+            await _configPersistenceLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await action().ConfigureAwait(false);
+            }
+            finally
+            {
+                _configPersistenceLock.Release();
             }
         }
 
@@ -481,10 +501,12 @@ namespace NetworkMonitor.Processor.Services
 
             try
             {
-                await _protectedConfigManager.PersistAsync(ProtectedConfigurationParameters.AuthKey, _netConfig, _netConfig.AuthKey);
-                await _protectedConfigManager.PersistAsync(ProtectedConfigurationParameters.RabbitPassword, _netConfig, _netConfig.RabbitPassword);
-
-                await SaveNetConfigAsync();
+                await WithConfigPersistenceLock(async () =>
+                {
+                    await _protectedConfigManager.PersistAsync(ProtectedConfigurationParameters.AuthKey, _netConfig, _netConfig.AuthKey);
+                    await _protectedConfigManager.PersistAsync(ProtectedConfigurationParameters.RabbitPassword, _netConfig, _netConfig.RabbitPassword);
+                    await SaveNetConfigCoreAsync();
+                });
                 result.Message += " Success : Saved netconfig with protected parameters . ";
             }
             catch (Exception e)
