@@ -36,6 +36,12 @@ DOCKER_IMAGE_NAME=$(echo "$DOCKER_IMAGE_FULL" | cut -d':' -f1)
 DOCKER_IMAGE_TAG=$(echo "$DOCKER_IMAGE_FULL" | cut -d':' -f2)
 echo "Docker Image Full is $DOCKER_IMAGE_FULL . Name is $DOCKER_IMAGE_NAME ."
 
+# >>> build & stage shared DLLs used by the Processor (run in its own dir) <<<
+MAKE_DIR="$HOME/code/NetworkMonitorLib"
+if ! ( cd "$MAKE_DIR" && ./make-dlls ); then
+  echo "make-dlls failed — check $MAKE_DIR/script_debug.log" >&2
+  exit 1
+fi
 
 # --- tests ---
 dotnet test "$PROJECT"
