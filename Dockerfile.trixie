@@ -10,9 +10,9 @@ ENV HOME=/home/appuser
 
 # ---- Parameters (overridable at build) ----
 # Which Debian feed to use for Microsoft's repo (stick to 12 while 13 isn't populated)
-ARG DOTNET_DEBIAN_FEED=12
+ARG DOTNET_DEBIAN_FEED=13
 # Which .NET runtime package to install (aspnetcore runtime includes Microsoft.AspNetCore.App)
-ARG DOTNET_PACKAGE=aspnetcore-runtime-9.0
+ARG DOTNET_PACKAGE=aspnetcore-runtime-10.0
 
 
 # OS deps: .NET runtime + Chromium/Puppeteer shared libs + xvfb + xauth + bash
